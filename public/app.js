@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Phase 2 Engine UI Elements
   const engineRunnerSection = document.getElementById('engine-runner-section');
   const engineForm = document.getElementById('engine-form');
-  const engineInvoiceSelect = document.getElementById('invoice-select');
+  const engineInvoiceInput = document.getElementById('invoice-input');
   const engineWarehouseInput = document.getElementById('warehouse-input');
   const engineWarehouseList = document.getElementById('warehouse-list');
   const runEngineBtn = document.getElementById('run-engine-btn');
@@ -503,23 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Phase 2: Engine Data Populator & Runners
   // ==========================================================================
   function populateEngineInputs() {
-    // 1. Extract unique invoice numbers
-    const invoices = new Set();
-    invoiceData.forEach(r => {
-      if (r.invoice_number) invoices.add(r.invoice_number.trim());
-    });
-    
-    // Sort and populate select dropdown
-    const sortedInvoices = Array.from(invoices).sort();
-    engineInvoiceSelect.innerHTML = '<option value="" disabled selected>Select Invoice</option>';
-    sortedInvoices.forEach(inv => {
-      const option = document.createElement('option');
-      option.value = inv;
-      option.textContent = inv;
-      engineInvoiceSelect.appendChild(option);
-    });
-
-    // 2. Extract unique warehouse IDs
+    // 1. Extract unique warehouse IDs
     const warehouses = new Set();
     rebniData.forEach(r => {
       if (r.warehouse_id) warehouses.add(r.warehouse_id.trim());
@@ -549,11 +533,11 @@ document.addEventListener('DOMContentLoaded', () => {
     engineError.classList.add('hidden');
     engineError.textContent = '';
 
-    const invoiceNumber = engineInvoiceSelect.value;
+    const invoiceNumber = engineInvoiceInput.value.trim();
     const warehouseId = engineWarehouseInput.value.trim();
 
     if (!invoiceNumber) {
-      engineError.textContent = 'Please select an Invoice Number.';
+      engineError.textContent = 'Please enter an Invoice Number.';
       engineError.classList.remove('hidden');
       return;
     }

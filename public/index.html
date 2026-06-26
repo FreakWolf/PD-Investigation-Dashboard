@@ -101,14 +101,10 @@
             <hr class="section-divider">
             <h3 class="section-subtitle">Run Investigation Engine</h3>
             <form id="engine-form" class="setup-form" novalidate>
-              <!-- Invoice Number Select -->
+              <!-- Invoice Number Input -->
               <div class="form-group">
-                <label for="invoice-select">Invoice Number <span class="required">*</span></label>
-                <div class="select-wrapper">
-                  <select id="invoice-select" name="invoiceNumber" required>
-                    <option value="" disabled selected>Select Invoice</option>
-                  </select>
-                </div>
+                <label for="invoice-input">Invoice Number <span class="required">*</span></label>
+                <input type="text" id="invoice-input" name="invoiceNumber" placeholder="Enter Invoice Number" required autocomplete="off">
               </div>
               
               <!-- Warehouse ID Input -->
