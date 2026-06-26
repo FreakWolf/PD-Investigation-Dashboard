@@ -104,7 +104,8 @@
               <!-- Invoice Number Input -->
               <div class="form-group">
                 <label for="invoice-input">Invoice Number <span class="required">*</span></label>
-                <input type="text" id="invoice-input" name="invoiceNumber" placeholder="Enter Invoice Number" required autocomplete="off">
+                <input type="text" id="invoice-input" name="invoiceNumber" placeholder="Enter Invoice Number" list="invoice-list" required autocomplete="off">
+                <datalist id="invoice-list"></datalist>
               </div>
               
               <!-- Warehouse ID Input -->
@@ -191,6 +192,31 @@
           </div>
           
           <div class="table-pagination-container hidden" id="rebni-pagination">
+            <!-- Rendered dynamically -->
+          </div>
+        </section>
+      </div>
+
+      <!-- Batch Summary Section -->
+      <div id="batch-summary-section" class="dashboard-grid full-grid hidden">
+        <section class="card data-table-card" aria-labelledby="batch-table-title">
+          <div class="card-header table-card-header">
+            <div class="header-left">
+              <div class="header-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+              </div>
+              <h2 id="batch-table-title">Batch Investigation Scanner</h2>
+            </div>
+            <div class="header-actions table-actions" id="batch-table-actions">
+              <input type="text" id="batch-search-input" class="search-input" placeholder="Search Batch Results...">
+            </div>
+          </div>
+          <div class="table-container" id="batch-table-container">
+            <div class="empty-state">
+              <p>Configure investigation setup and click <strong>Start Investigation</strong> to view batch scan results.</p>
+            </div>
+          </div>
+          <div class="table-pagination-container hidden" id="batch-pagination">
             <!-- Rendered dynamically -->
           </div>
         </section>

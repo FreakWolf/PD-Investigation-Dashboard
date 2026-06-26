@@ -220,6 +220,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Populate Phase 2 Engine Inputs
       populateEngineInputs();
+
+      // Fetch and display batch summary
+      renderTableLoading('batch-table-container');
+      const batchSummaryRes = await fetch('/api/investigate/batch-summary');
+      if (batchSummaryRes.ok) {
+        const batchData = await batchSummaryRes.json();
+        document.getElementById('batch-summary-section').classList.remove('hidden');
+        initBatchTable(batchData);
+      } else {
+        console.error('Failed to load batch summary.');
+      }
       
     } catch (error) {
       console.error(error);
@@ -500,6 +511,199 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================================================
+  // Batch Investigation Scanner Table
+  // ==========================================================================
+  const BATCH_HEADERS = [
+    { key: 'invoiceNumber', label: 'Invoice No.', isMono: true },
+    { key: 'asin', label: 'ASIN', isMono: true },
+    { key: 'po', label: 'PO ID', isMono: true },
+    { key: 'warehouseId', label: 'Warehouse' },
+    { key: 'status', label: 'Status' },
+    { key: 'billed', label: 'Billed' },
+    { key: 'received', label: 'Received' },
+    { key: 'missingQty', label: 'Missing Qty' },
+    { key: 'cp', label: 'CP Cost' }
+  ];
+
+  function initBatchTable(rawData) {
+    const searchInput = document.getElementById(`batch-search-input`);
+    const tableContainer = document.getElementById(`batch-table-container`);
+    const paginationPanel = document.getElementById(`batch-pagination`);
+    
+    let filteredData = [...rawData];
+    let sortKey = 'status';
+    let sortAsc = true;
+    let currentPage = 1;
+    
+    searchInput.value = '';
+    
+    searchInput.oninput = () => {
+      const query = searchInput.value.toLowerCase().trim();
+      if (!query) {
+        filteredData = [...rawData];
+      } else {
+        filteredData = rawData.filter(row => {
+          return Object.values(row).some(val => String(val).toLowerCase().includes(query));
+        });
+      }
+      currentPage = 1;
+      render();
+    };
+
+    function sortData(key) {
+      if (sortKey === key) {
+        sortAsc = !sortAsc;
+      } else {
+        sortKey = key;
+        sortAsc = true;
+      }
+      
+      filteredData.sort((a, b) => {
+        let valA = a[key] || '';
+        let valB = b[key] || '';
+        
+        const numA = Number(valA);
+        const numB = Number(valB);
+        if (!isNaN(numA) && !isNaN(numB)) {
+          valA = numA;
+          valB = numB;
+        } else {
+          valA = String(valA).toLowerCase();
+          valB = String(valB).toLowerCase();
+        }
+        
+        if (valA < valB) return sortAsc ? -1 : 1;
+        if (valA > valB) return sortAsc ? 1 : -1;
+        return 0;
+      });
+      
+      currentPage = 1;
+      render();
+    }
+
+    function render() {
+      if (filteredData.length === 0) {
+        tableContainer.innerHTML = `
+          <div class="empty-state">
+            <p>No matching batch results found.</p>
+          </div>
+        `;
+        paginationPanel.classList.add('hidden');
+        return;
+      }
+
+      const totalRecords = filteredData.length;
+      const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+      if (currentPage > totalPages) currentPage = totalPages;
+      if (currentPage < 1) currentPage = 1;
+      
+      const startIndex = (currentPage - 1) * PAGE_SIZE;
+      const endIndex = Math.min(startIndex + PAGE_SIZE, totalRecords);
+      const paginatedRows = filteredData.slice(startIndex, endIndex);
+
+      const table = document.createElement('table');
+      table.className = 'animate-fade-in batch-scanner-table';
+      
+      const thead = document.createElement('thead');
+      const trHead = document.createElement('tr');
+      
+      BATCH_HEADERS.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h.label;
+        if (sortKey === h.key) {
+          th.className = sortAsc ? 'sort-asc' : 'sort-desc';
+        }
+        th.onclick = () => sortData(h.key);
+        trHead.appendChild(th);
+      });
+      
+      const thAction = document.createElement('th');
+      thAction.textContent = 'Actions';
+      trHead.appendChild(thAction);
+      
+      thead.appendChild(trHead);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      paginatedRows.forEach(row => {
+        const tr = document.createElement('tr');
+        BATCH_HEADERS.forEach(h => {
+          const td = document.createElement('td');
+          
+          if (h.key === 'status') {
+            let badgeClass = 'badge-info';
+            if (row[h.key] === 'Interfaced/Matched') badgeClass = 'badge-success';
+            else if (row[h.key] === 'Matched (No Discrepancy)') badgeClass = 'badge-primary';
+            else if (row[h.key].includes('Discrepancy') || row[h.key].includes('Mismatch')) badgeClass = 'badge-danger';
+            else if (row[h.key].includes('No REBNI') || row[h.key].includes('0 Matches') || row[h.key].includes('Unmatched')) badgeClass = 'badge-danger';
+            
+            td.innerHTML = `<span class="status-pill ${badgeClass}">${row[h.key]}</span>`;
+          } else if (h.key === 'cp') {
+            td.textContent = Number(row[h.key]).toFixed(2);
+          } else {
+            td.textContent = row[h.key] !== undefined ? row[h.key] : '';
+          }
+
+          if (h.isMono) {
+            td.className = 'mono';
+          }
+          tr.appendChild(td);
+        });
+
+        const tdAction = document.createElement('td');
+        const runBtn = document.createElement('button');
+        runBtn.className = 'secondary-btn btn-sm run-audit-btn';
+        runBtn.textContent = 'Run Audit';
+        runBtn.onclick = () => {
+          engineInvoiceInput.value = row.invoiceNumber;
+          engineWarehouseInput.value = row.warehouseId || '';
+          
+          // Trigger form submit
+          engineForm.dispatchEvent(new Event('submit'));
+          
+          // Scroll down to detailed results section
+          document.getElementById('engine-runner-section').scrollIntoView({ behavior: 'smooth' });
+        };
+        tdAction.appendChild(runBtn);
+        tr.appendChild(tdAction);
+
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      tableContainer.innerHTML = '';
+      tableContainer.appendChild(table);
+
+      paginationPanel.classList.remove('hidden');
+      paginationPanel.innerHTML = `
+        <div class="pagination-info">
+          Showing <strong>${startIndex + 1}</strong> to <strong>${endIndex}</strong> of <strong>${totalRecords}</strong> records
+        </div>
+        <div class="pagination-controls">
+          <button class="pagination-btn" id="batch-prev" ${currentPage === 1 ? 'disabled' : ''}>Prev</button>
+          <button class="pagination-btn" id="batch-next" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+        </div>
+      `;
+
+      document.getElementById('batch-prev').onclick = () => {
+        if (currentPage > 1) {
+          currentPage--;
+          render();
+        }
+      };
+
+      document.getElementById('batch-next').onclick = () => {
+        if (currentPage < totalPages) {
+          currentPage++;
+          render();
+        }
+      };
+    }
+
+    render();
+  }
+
+  // ==========================================================================
   // Phase 2: Engine Data Populator & Runners
   // ==========================================================================
   function populateEngineInputs() {
@@ -517,6 +721,23 @@ document.addEventListener('DOMContentLoaded', () => {
       option.value = wh;
       engineWarehouseList.appendChild(option);
     });
+
+    // 2. Extract unique invoice numbers
+    const invoices = new Set();
+    invoiceData.forEach(r => {
+      if (r.invoice_number) invoices.add(r.invoice_number.trim());
+    });
+
+    const sortedInvoices = Array.from(invoices).sort();
+    const engineInvoiceList = document.getElementById('invoice-list');
+    if (engineInvoiceList) {
+      engineInvoiceList.innerHTML = '';
+      sortedInvoices.forEach(inv => {
+        const option = document.createElement('option');
+        option.value = inv;
+        engineInvoiceList.appendChild(option);
+      });
+    }
 
     // Hide previous results and show engine runner panel
     engineResultsSection.classList.add('hidden');

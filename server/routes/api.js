@@ -192,6 +192,154 @@ router.post('/investigate/run', (req, res) => {
 });
 
 /**
+ * GET /api/investigate/filters
+ * Retrieve unique invoices and ASINs for the loaded session
+ */
+router.get('/investigate/filters', (req, res) => {
+  try {
+    const filters = investigationService.getFiltersForActiveInvestigation();
+    res.json(filters);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/investigate/rebni-filters
+ * Retrieve unique warehouses and POs for a selected ASIN
+ */
+router.get('/investigate/rebni-filters', (req, res) => {
+  const { asin } = req.query;
+  if (!asin) {
+    return res.status(400).json({ error: 'ASIN parameter is required.' });
+  }
+  try {
+    const filters = investigationService.getRebniFiltersForAsin(asin);
+    res.json(filters);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/investigate/run
+ * Run the investigation rules for an Invoice Number and Warehouse ID, processing all ASINs
+ */
+router.post('/investigate/run', (req, res) => {
+  const { invoiceNumber, warehouseId } = req.body;
+  if (!invoiceNumber) {
+    return res.status(400).json({ error: 'Invoice Number is required.' });
+  }
+  if (!warehouseId) {
+    return res.status(400).json({ error: 'Warehouse ID is required.' });
+  }
+
+  try {
+    const session = investigationService.getActiveInvestigation();
+    if (!session.vendorCode) {
+      return res.status(400).json({ error: 'No active investigation session. Please start an investigation first.' });
+    }
+
+    // Find all matching invoice records for this invoiceNumber (including suffix matches)
+    const invoicesForInvNum = session.invoiceRecords.filter(r => {
+      const dbInv = (r.invoice_number || '').trim().toLowerCase();
+      const queryInv = invoiceNumber.trim().toLowerCase();
+      return dbInv === queryInv || dbInv.startsWith(queryInv) || queryInv.startsWith(dbInv);
+    });
+
+    if (invoicesForInvNum.length === 0) {
+      return res.status(400).json({ error: `No invoice records found for Invoice Number: "${invoiceNumber}".` });
+    }
+
+    // Extract unique ASINs in this Invoice
+    const asinsInInvoice = Array.from(new Set(invoicesForInvNum.map(r => (r.asin || '').trim()).filter(Boolean)));
+
+    if (asinsInInvoice.length === 0) {
+      return res.status(400).json({ error: `No ASINs found in Invoice Number: "${invoiceNumber}".` });
+    }
+
+    const asinResults = [];
+
+    for (const asin of asinsInInvoice) {
+      // Find matching invoice rows for this ASIN in the invoice
+      const matchedInvoices = invoicesForInvNum.filter(r => (r.asin || '').trim() === asin);
+      const firstRec = matchedInvoices[0];
+      const po = (firstRec.purchase_order_id || '').trim();
+
+      // Find REBNI match for this ASIN and PO and warehouse
+      const matchedRebnis = session.rebniRecords.filter(r => 
+        (r.asin || '').trim() === asin && 
+        (r.warehouse_id || '').trim().toLowerCase() === warehouseId.trim().toLowerCase() && 
+        (r.po || '').trim() === po
+      );
+
+      // Run rules
+      const result = investigationService.runRulesInternal(invoiceNumber, asin, warehouseId, po, matchedInvoices, matchedRebnis);
+
+      // Map backend status to frontend result values:
+      let resultBadge = 'Paused';
+      if (result.status === 'Interfaced/Matched') {
+        resultBadge = 'Resolved - Fully Processed';
+      } else if (result.status === 'Matched (No Discrepancy)') {
+        resultBadge = 'Completed';
+      } else if (result.status === 'Discrepancy (Missing Qty)' || result.status === 'Invoice Mismatch' || result.status === 'Matched to Multiple') {
+        resultBadge = 'Discrepancy Found';
+      } else if (result.status === 'No REBNI Data' || result.status === '0 Matches in REBNI') {
+        resultBadge = 'Discrepancy Found';
+      }
+
+      // Map timeline to include checks / warnings / crosses
+      const timelineMapped = result.logs.map(log => {
+        if (log.startsWith('[ERROR]') || log.startsWith('Error:')) {
+          return `❌ ${log}`;
+        }
+        if (log.startsWith('[WARNING]') || log.startsWith('Warning:') || log.includes('mismatch') || log.includes('does NOT match')) {
+          return `⚠️ ${log}`;
+        }
+        if (log.includes('Success:') || log.includes('Rule Triggered:') || log.includes('Found REBNI record')) {
+          return `✔ ${log}`;
+        }
+        return `🔹 ${log}`;
+      });
+
+      asinResults.push({
+        asin,
+        invoiceNumber,
+        po,
+        warehouse: warehouseId,
+        invoiceStatus: matchedInvoices.map(r => r.invoice_item_status || 'N/A').join(', '),
+        billedQty: result.billed !== undefined ? result.billed : Math.max(...matchedInvoices.map(r => parseInt(r.quantity_invoiced) || 0)),
+        receivedQty: result.received !== undefined ? result.received : 0,
+        missingQty: result.missingQty !== undefined ? result.missingQty : 0,
+        result: resultBadge,
+        timeline: timelineMapped,
+        generatedBlub: result.blurb,
+        invoiceRecords: matchedInvoices,
+        rebniRecords: matchedRebnis
+      });
+    }
+
+    res.json({ success: true, asinResults });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/investigate/batch-summary
+ * Get status summary for all unique (invoice, ASIN) pairs in the session
+ */
+router.get('/investigate/batch-summary', (req, res) => {
+  try {
+    const summary = investigationService.getBatchSummary();
+    res.json(summary);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/session
  * Get current active investigation details
  */

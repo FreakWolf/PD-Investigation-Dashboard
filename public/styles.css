@@ -1174,3 +1174,75 @@ td.mono {
   padding: 8px 10px !important;
 }
 
+/* ==========================================================================
+   Phase 2: Batch Scanner & Status Pill Styles
+   ========================================================================== */
+
+.full-grid {
+  grid-template-columns: 1fr;
+  width: 100%;
+  margin-top: 24px;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Status badge color modifiers */
+.badge-success {
+  background: var(--accent-success-bg);
+  border: 1px solid var(--accent-success);
+  color: var(--accent-success);
+}
+
+.badge-primary {
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+}
+
+.badge-danger {
+  background: var(--accent-danger-bg);
+  border: 1px solid var(--accent-danger);
+  color: var(--accent-danger);
+}
+
+.badge-info {
+  background: rgba(129, 140, 248, 0.05);
+  border: 1px solid var(--text-muted);
+  color: var(--text-secondary);
+}
+
+/* Run Audit Button styling */
+.run-audit-btn {
+  background: rgba(129, 140, 248, 0.05) !important;
+  border: 1px solid var(--card-border) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 500 !important;
+  font-size: 0.75rem !important;
+  padding: 5px 12px !important;
+  transition: all 0.2s ease !important;
+}
+
+.run-audit-btn:hover {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: white !important;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+}
+
+.batch-scanner-table tr {
+  transition: background 0.15s ease;
+}
+
+.batch-scanner-table tr:hover {
+  background: rgba(129, 140, 248, 0.02);
+}
+
+
