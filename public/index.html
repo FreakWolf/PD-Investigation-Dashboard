@@ -95,6 +95,36 @@
             </button>
           </form>
           <div id="general-error" class="general-error-container hidden"></div>
+
+          <!-- Investigation Engine Form (Enabled after Phase 1 data ingestion) -->
+          <div id="engine-runner-section" class="engine-runner hidden">
+            <hr class="section-divider">
+            <h3 class="section-subtitle">Run Investigation Engine</h3>
+            <form id="engine-form" class="setup-form" novalidate>
+              <!-- Invoice Number Select -->
+              <div class="form-group">
+                <label for="invoice-select">Invoice Number <span class="required">*</span></label>
+                <div class="select-wrapper">
+                  <select id="invoice-select" name="invoiceNumber" required>
+                    <option value="" disabled selected>Select Invoice</option>
+                  </select>
+                </div>
+              </div>
+              
+              <!-- Warehouse ID Input -->
+              <div class="form-group">
+                <label for="warehouse-input">Warehouse ID <span class="required">*</span></label>
+                <input type="text" id="warehouse-input" name="warehouseId" placeholder="Enter Warehouse ID" list="warehouse-list" required autocomplete="off">
+                <datalist id="warehouse-list"></datalist>
+              </div>
+              
+              <button type="submit" id="run-engine-btn" class="primary-btn run-btn">
+                <span class="btn-text">Run Engine</span>
+                <span class="btn-spinner" id="engine-btn-spinner"></span>
+              </button>
+            </form>
+            <div id="engine-error" class="general-error-container hidden"></div>
+          </div>
         </section>
 
         <!-- Right: Summary Metrics -->
@@ -170,62 +200,91 @@
         </section>
       </div>
 
-      <!-- Bottom Grid: Future Placeholders -->
-      <div class="dashboard-grid bottom-grid">
-        
-        <!-- Findings & Exceptions Placeholder -->
-        <section class="card placeholder-card" id="findings-section" aria-labelledby="findings-title">
-          <div class="card-header">
-            <div class="header-icon warning-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-            </div>
-            <h2 id="findings-title">Findings & Exceptions</h2>
-          </div>
-          <div class="card-body placeholder-body">
-            <div class="future-badge">Coming in Phase 2</div>
-            <p class="placeholder-text">Investigation rules and anomaly detection will run automatically on the filtered datasets. Detailed exceptions, mismatches, and validation errors will be listed here with supporting evidence.</p>
-            <div class="mock-ui-elements">
-              <div class="mock-item error-row"></div>
-              <div class="mock-item error-row"></div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Investigation Timeline Placeholder -->
-        <section class="card placeholder-card" id="timeline-section" aria-labelledby="timeline-title">
+      <!-- Bottom Section: Phase 2 Investigation Results -->
+      <div id="engine-results-section" class="dashboard-grid bottom-grid hidden">
+        <!-- Left: ASIN Tabs Selection -->
+        <section class="card asin-list-card" aria-labelledby="asin-list-title">
           <div class="card-header">
             <div class="header-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
             </div>
-            <h2 id="timeline-title">Investigation Timeline</h2>
+            <h2 id="asin-list-title">Investigated ASINs</h2>
           </div>
-          <div class="card-body placeholder-body">
-            <div class="future-badge">Coming in Phase 3</div>
-            <p class="placeholder-text">Displays a temporal sequence mapping invoice creation, purchase orders, shipments, unpacked events, post-adjustment quantities, and final matches. Helps visualize the sequence of discrepancies.</p>
-            <div class="mock-ui-elements timeline-mock">
-              <div class="mock-node"></div>
-              <div class="mock-node"></div>
-            </div>
+          <div class="card-body asin-tabs-container" id="asin-tabs-list">
+            <!-- Populated dynamically -->
           </div>
         </section>
 
-        <!-- Recommended Actions Placeholder -->
-        <section class="card placeholder-card" id="actions-section" aria-labelledby="actions-title">
+        <!-- Right: ASIN Result Detail Card (Timeline + Master Stats + Blub) -->
+        <section class="card result-detail-card" aria-labelledby="result-detail-title">
           <div class="card-header">
-            <div class="header-icon success-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+            <div class="header-icon success-icon" id="result-header-icon-container">
+              <svg id="success-icon-svg" class="success-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
             </div>
-            <h2 id="actions-title">Recommended Actions</h2>
+            <h2 id="result-detail-title">Investigation Details</h2>
+            <div id="asin-result-badge" class="result-badge">Resolved</div>
           </div>
-          <div class="card-body placeholder-body">
-            <div class="future-badge">Coming in Phase 4</div>
-            <p class="placeholder-text">AI-suggested remediation steps for Rohit Singh. Proposes chargeback claims, updates to adjustments, or contacting vendors for specific purchase orders with draft emails or action buttons.</p>
-            <div class="mock-ui-elements">
-              <div class="mock-item btn-row"></div>
+          <div class="card-body" id="asin-detail-body">
+            <!-- Master Details Grid -->
+            <div class="metrics-card-grid">
+              <div class="metric-mini-card">
+                <span class="label">Invoice Number</span>
+                <span class="value" id="card-invoice-number">-</span>
+              </div>
+              <div class="metric-mini-card">
+                <span class="label">ASIN</span>
+                <span class="value" id="card-asin">-</span>
+              </div>
+              <div class="metric-mini-card">
+                <span class="label">PO Number</span>
+                <span class="value" id="card-po">-</span>
+              </div>
+              <div class="metric-mini-card">
+                <span class="label">Warehouse ID</span>
+                <span class="value" id="card-warehouse">-</span>
+              </div>
+              <div class="metric-mini-card">
+                <span class="label">Invoice Status</span>
+                <span class="value" id="card-status">-</span>
+              </div>
+              <div class="metric-mini-card">
+                <span class="label">Billed Qty</span>
+                <span class="value font-accent" id="card-billed-qty">-</span>
+              </div>
+              <div class="metric-mini-card">
+                <span class="label">Received Qty</span>
+                <span class="value font-success" id="card-received-qty">-</span>
+              </div>
+              <div class="metric-mini-card">
+                <span class="label">Missing Qty</span>
+                <span class="value font-danger" id="card-missing-qty">-</span>
+              </div>
+            </div>
+
+            <div class="results-inner-grid">
+              <!-- Timeline Logs -->
+              <div class="results-timeline-panel">
+                <h3>Investigation Timeline</h3>
+                <div class="timeline-checklist" id="card-timeline-list">
+                  <!-- Rendered dynamically -->
+                </div>
+              </div>
+
+              <!-- Generated Blub -->
+              <div class="results-blub-panel">
+                <div class="blub-header">
+                  <h3>Generated Blub / Internal Note</h3>
+                  <button id="copy-blub-btn" class="secondary-btn btn-sm copy-btn">
+                    <span class="btn-text">Copy</span>
+                  </button>
+                </div>
+                <div class="blub-container">
+                  <pre id="card-blub-content">-</pre>
+                </div>
+              </div>
             </div>
           </div>
         </section>
-        
       </div>
     </main>
 

@@ -10,6 +10,7 @@ import {
   clearCache
 } from '../services/dataService.js';
 import { investigationService } from '../services/investigationService.js';
+import { investigationEngine } from '../services/investigation/investigationEngine.js';
 
 const router = express.Router();
 
@@ -155,6 +156,37 @@ router.post('/investigate', async (req, res) => {
 
   } catch (error) {
     console.error('Investigation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/investigate/run
+ * Run the modular investigation engine against loaded records
+ */
+router.post('/investigate/run', (req, res) => {
+  const { invoiceNumber, warehouseId } = req.body;
+
+  if (!invoiceNumber || !invoiceNumber.trim()) {
+    return res.status(400).json({ error: 'Invoice Number is required.' });
+  }
+
+  const session = investigationService.getActiveInvestigation();
+  if (!session || !session.vendorCode || session.invoiceRecords.length === 0) {
+    return res.status(400).json({ error: 'No active session. Please load seller/vendor data first.' });
+  }
+
+  try {
+    const runResult = investigationEngine.run(
+      session.invoiceRecords,
+      session.rebniRecords,
+      invoiceNumber.trim(),
+      warehouseId
+    );
+
+    res.json(runResult);
+  } catch (error) {
+    console.error('Run investigation error:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -26,6 +26,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const activeBadge = document.getElementById('active-investigation-indicator');
   const statsContainer = document.getElementById('summary-stats-container');
   
+  // Phase 2 Engine UI Elements
+  const engineRunnerSection = document.getElementById('engine-runner-section');
+  const engineForm = document.getElementById('engine-form');
+  const engineInvoiceSelect = document.getElementById('invoice-select');
+  const engineWarehouseInput = document.getElementById('warehouse-input');
+  const engineWarehouseList = document.getElementById('warehouse-list');
+  const runEngineBtn = document.getElementById('run-engine-btn');
+  const engineBtnSpinner = document.getElementById('engine-btn-spinner');
+  const engineError = document.getElementById('engine-error');
+  
+  const engineResultsSection = document.getElementById('engine-results-section');
+  const asinTabsList = document.getElementById('asin-tabs-list');
+  const copyBlubBtn = document.getElementById('copy-blub-btn');
+  
   // Table action panels
   const invoiceTableActions = document.getElementById('invoice-table-actions');
   const rebniTableActions = document.getElementById('rebni-table-actions');
@@ -203,6 +217,9 @@ document.addEventListener('DOMContentLoaded', () => {
       // Initialize dynamic tables with search, sort, and pagination
       initTable('invoice', invoiceData, INVOICE_HEADERS);
       initTable('rebni', rebniData, REBNI_HEADERS);
+
+      // Populate Phase 2 Engine Inputs
+      populateEngineInputs();
       
     } catch (error) {
       console.error(error);
@@ -481,6 +498,245 @@ document.addEventListener('DOMContentLoaded', () => {
     // First render
     render();
   }
+
+  // ==========================================================================
+  // Phase 2: Engine Data Populator & Runners
+  // ==========================================================================
+  function populateEngineInputs() {
+    // 1. Extract unique invoice numbers
+    const invoices = new Set();
+    invoiceData.forEach(r => {
+      if (r.invoice_number) invoices.add(r.invoice_number.trim());
+    });
+    
+    // Sort and populate select dropdown
+    const sortedInvoices = Array.from(invoices).sort();
+    engineInvoiceSelect.innerHTML = '<option value="" disabled selected>Select Invoice</option>';
+    sortedInvoices.forEach(inv => {
+      const option = document.createElement('option');
+      option.value = inv;
+      option.textContent = inv;
+      engineInvoiceSelect.appendChild(option);
+    });
+
+    // 2. Extract unique warehouse IDs
+    const warehouses = new Set();
+    rebniData.forEach(r => {
+      if (r.warehouse_id) warehouses.add(r.warehouse_id.trim());
+    });
+    
+    // Populate autocomplete datalist
+    const sortedWarehouses = Array.from(warehouses).sort();
+    engineWarehouseList.innerHTML = '';
+    sortedWarehouses.forEach(wh => {
+      const option = document.createElement('option');
+      option.value = wh;
+      engineWarehouseList.appendChild(option);
+    });
+
+    // Hide previous results and show engine runner panel
+    engineResultsSection.classList.add('hidden');
+    engineRunnerSection.classList.remove('hidden');
+    engineError.classList.add('hidden');
+    engineForm.reset();
+  }
+
+  let activeAsinResults = [];
+  let currentActiveAsin = '';
+
+  engineForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    engineError.classList.add('hidden');
+    engineError.textContent = '';
+
+    const invoiceNumber = engineInvoiceSelect.value;
+    const warehouseId = engineWarehouseInput.value.trim();
+
+    if (!invoiceNumber) {
+      engineError.textContent = 'Please select an Invoice Number.';
+      engineError.classList.remove('hidden');
+      return;
+    }
+    if (!warehouseId) {
+      engineError.textContent = 'Please enter a Warehouse ID.';
+      engineError.classList.remove('hidden');
+      return;
+    }
+
+    // UI Loading State
+    runEngineBtn.disabled = true;
+    engineBtnSpinner.style.display = 'inline-block';
+    runEngineBtn.querySelector('.btn-text').textContent = 'Running Engine...';
+    engineResultsSection.classList.add('hidden');
+
+    try {
+      const response = await fetch('/api/investigate/run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ invoiceNumber, warehouseId })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to run investigation engine.');
+      }
+
+      activeAsinResults = result.asinResults || [];
+      if (activeAsinResults.length === 0) {
+        throw new Error('No ASINs found to investigate under this invoice.');
+      }
+
+      // Show results grid
+      engineResultsSection.classList.remove('hidden');
+      renderAsinTabs();
+
+    } catch (error) {
+      console.error(error);
+      engineError.textContent = error.message;
+      engineError.classList.remove('hidden');
+    } finally {
+      runEngineBtn.disabled = false;
+      engineBtnSpinner.style.display = 'none';
+      runEngineBtn.querySelector('.btn-text').textContent = 'Run Engine';
+    }
+  });
+
+  function renderAsinTabs() {
+    asinTabsList.innerHTML = '';
+    
+    activeAsinResults.forEach((asinRes, idx) => {
+      const tab = document.createElement('button');
+      tab.className = 'asin-tab';
+      if (idx === 0) {
+        tab.classList.add('active');
+        currentActiveAsin = asinRes.asin;
+      }
+
+      // Set class based on result status
+      let resultClass = 'info';
+      if (asinRes.result === 'Resolved - Fully Processed') resultClass = 'success';
+      else if (asinRes.result === 'Completed') resultClass = 'primary';
+      else if (asinRes.result === 'Discrepancy Found') resultClass = 'danger';
+      else if (asinRes.result === 'Paused') resultClass = 'warning';
+
+      tab.innerHTML = `
+        <span class="asin-code">${asinRes.asin}</span>
+        <span class="asin-badge ${resultClass}">${asinRes.result}</span>
+      `;
+
+      tab.onclick = () => {
+        document.querySelectorAll('.asin-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentActiveAsin = asinRes.asin;
+        displayAsinDetail(asinRes);
+      };
+
+      asinTabsList.appendChild(tab);
+    });
+
+    // Display first ASIN detail by default
+    if (activeAsinResults.length > 0) {
+      displayAsinDetail(activeAsinResults[0]);
+    }
+  }
+
+  function displayAsinDetail(asinRes) {
+    document.getElementById('card-invoice-number').textContent = asinRes.invoiceNumber;
+    document.getElementById('card-asin').textContent = asinRes.asin;
+    document.getElementById('card-po').textContent = asinRes.po;
+    document.getElementById('card-warehouse').textContent = asinRes.warehouse;
+    document.getElementById('card-status').textContent = asinRes.invoiceStatus;
+    document.getElementById('card-billed-qty').textContent = asinRes.billedQty;
+    document.getElementById('card-received-qty').textContent = asinRes.receivedQty;
+    document.getElementById('card-missing-qty').textContent = asinRes.missingQty;
+
+    // Result Badge
+    const badge = document.getElementById('asin-result-badge');
+    badge.textContent = asinRes.result;
+    badge.className = 'result-badge'; // reset
+    if (asinRes.result === 'Resolved - Fully Processed') badge.classList.add('success');
+    else if (asinRes.result === 'Completed') badge.classList.add('primary');
+    else if (asinRes.result === 'Discrepancy Found') badge.classList.add('danger');
+    else if (asinRes.result === 'Paused') badge.classList.add('warning');
+
+    // Header Icon class
+    const headerIconContainer = document.getElementById('result-header-icon-container');
+    headerIconContainer.className = 'header-icon';
+    if (asinRes.result === 'Resolved - Fully Processed' || asinRes.result === 'Completed') {
+      headerIconContainer.classList.add('success-icon');
+    } else if (asinRes.result === 'Discrepancy Found') {
+      headerIconContainer.classList.add('warning-icon');
+    } else {
+      headerIconContainer.classList.add('info-icon');
+    }
+
+    // Timeline checklist
+    const timelineList = document.getElementById('card-timeline-list');
+    timelineList.innerHTML = '';
+    asinRes.timeline.forEach(step => {
+      const item = document.createElement('div');
+      item.className = 'timeline-item';
+      
+      const isCheck = step.startsWith('✔');
+      const isWarning = step.startsWith('⚠️');
+      const isCross = step.startsWith('❌');
+
+      let iconHtml = '🔹';
+      let text = step;
+      let itemClass = '';
+
+      if (isCheck) {
+        iconHtml = '<span class="step-icon check-icon">✔</span>';
+        text = step.slice(1).trim();
+        itemClass = 'step-success';
+      } else if (isWarning) {
+        iconHtml = '<span class="step-icon warn-icon">⚠️</span>';
+        text = step.slice(1).trim();
+        itemClass = 'step-warning';
+      } else if (isCross) {
+        iconHtml = '<span class="step-icon error-icon">❌</span>';
+        text = step.slice(1).trim();
+        itemClass = 'step-error';
+      }
+
+      item.innerHTML = `
+        ${iconHtml}
+        <span class="step-text">${text}</span>
+      `;
+      if (itemClass) {
+        item.classList.add(itemClass);
+      }
+      timelineList.appendChild(item);
+    });
+
+    // Blub box
+    const blubPre = document.getElementById('card-blub-content');
+    blubPre.textContent = asinRes.generatedBlub;
+
+    // Reset copy button
+    copyBlubBtn.querySelector('.btn-text').textContent = 'Copy';
+    copyBlubBtn.classList.remove('success');
+  }
+
+  // Copy Blub Event
+  copyBlubBtn.addEventListener('click', () => {
+    const activeRes = activeAsinResults.find(r => r.asin === currentActiveAsin);
+    if (!activeRes || !activeRes.generatedBlub) return;
+
+    navigator.clipboard.writeText(activeRes.generatedBlub).then(() => {
+      copyBlubBtn.querySelector('.btn-text').textContent = 'Copied!';
+      copyBlubBtn.classList.add('success');
+      setTimeout(() => {
+        copyBlubBtn.querySelector('.btn-text').textContent = 'Copy';
+        copyBlubBtn.classList.remove('success');
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy text: ', err);
+    });
+  });
 
   // ==========================================================================
   // Start Application Ingest
