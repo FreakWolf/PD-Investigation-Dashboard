@@ -1134,3 +1134,43 @@ td.mono {
   color: var(--accent-success);
 }
 
+/* Filtered Source Tables styling */
+.results-tables-section {
+  margin-top: 25px;
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+.results-tables-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 15px;
+}
+
+@media (max-width: 1000px) {
+  .results-tables-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.source-table-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.source-table-wrapper h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mini-table table {
+  font-size: 0.78rem !important;
+}
+
+.mini-table th, 
+.mini-table td {
+  padding: 8px 10px !important;
+}
+

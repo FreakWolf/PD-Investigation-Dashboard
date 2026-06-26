@@ -111,6 +111,15 @@ class InvestigationEngine {
       // Calculate Billed Qty: highest quantity_invoiced
       const billedQty = Math.max(...records.map(r => parseInt(r.quantity_invoiced, 10) || 0), 0);
 
+      // Filter matching REBNI records for frontend display
+      let rebniFiltered = rebniRecords.filter(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase());
+      if (context.warehouseId) {
+        rebniFiltered = rebniFiltered.filter(r => (r.warehouse_id || '').trim().toUpperCase() === context.warehouseId.toUpperCase());
+      }
+      if (po && po !== 'N/A') {
+        rebniFiltered = rebniFiltered.filter(r => (r.po || '').trim().toUpperCase() === po.toUpperCase());
+      }
+
       asinResults.push({
         invoiceNumber,
         asin,
@@ -124,7 +133,9 @@ class InvestigationEngine {
         result: context.result || 'Incomplete',
         generatedBlub: context.generatedBlub || 'N/A',
         timeline: context.timeline,
-        matchedInvoices: context.findings?.matchedInvoices || []
+        matchedInvoices: context.findings?.matchedInvoices || [],
+        invoiceRecords: records,
+        rebniRecords: rebniFiltered
       });
     }
 

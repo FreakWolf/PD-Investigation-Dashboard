@@ -703,6 +703,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reset copy button
     copyBlubBtn.querySelector('.btn-text').textContent = 'Copy';
     copyBlubBtn.classList.remove('success');
+
+    // Render Source Tables
+    renderMiniTable('card-invoice-table-container', asinRes.invoiceRecords || [], INVOICE_HEADERS);
+    renderMiniTable('card-rebni-table-container', asinRes.rebniRecords || [], REBNI_HEADERS);
   }
 
   // Copy Blub Event
@@ -721,6 +725,50 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Failed to copy text: ', err);
     });
   });
+
+  // ==========================================================================
+  // Render Mini Tables (Phase 2 Source Data)
+  // ==========================================================================
+  function renderMiniTable(containerId, records, headers) {
+    const container = document.getElementById(containerId);
+    if (!records || records.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>No matching records found.</p></div>';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'animate-fade-in';
+
+    // Header
+    const thead = document.createElement('thead');
+    const trHead = document.createElement('tr');
+    headers.forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h.label;
+      trHead.appendChild(th);
+    });
+    thead.appendChild(trHead);
+    table.appendChild(thead);
+
+    // Body
+    const tbody = document.createElement('tbody');
+    records.forEach(row => {
+      const tr = document.createElement('tr');
+      headers.forEach(h => {
+        const td = document.createElement('td');
+        td.textContent = row[h.key] !== undefined ? row[h.key] : '';
+        if (h.isMono) {
+          td.className = 'mono';
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    container.innerHTML = '';
+    container.appendChild(table);
+  }
 
   // ==========================================================================
   // Start Application Ingest
