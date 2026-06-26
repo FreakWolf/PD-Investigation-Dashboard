@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PD Investigation Dashboard - Automated Invoice & REBNI Investigation System</title>
+  <meta name="description" content="Professional automated invoice and REBNI investigation dashboard. Built for Rohit Singh.">
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- App Container -->
+  <div class="app-container">
+    
+    <!-- Header -->
+    <header class="dashboard-header">
+      <div class="header-brand">
+        <h1 id="main-title">PD Investigation Dashboard</h1>
+        <p id="main-subtitle" class="subtitle">Automated Invoice & REBNI Investigation System</p>
+      </div>
+      
+      <div class="header-meta">
+        <div class="meta-item author-tag">
+          <span class="label">Created By</span>
+          <span class="value" id="author-name">Rohit Singh</span>
+        </div>
+        <div class="meta-item time-tag">
+          <span class="label" id="clock-label">System Time (IST)</span>
+          <span class="value" id="real-time-clock">--:--:--</span>
+        </div>
+        <button id="theme-toggle-btn" class="icon-button" aria-label="Toggle Light/Dark Theme" title="Toggle Theme">
+          <!-- Light Mode Icon (Sun) -->
+          <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          <!-- Dark Mode Icon (Moon) -->
+          <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="dashboard-content">
+      
+      <!-- Top Section: Setup and Statistics -->
+      <div class="dashboard-grid top-grid">
+        
+        <!-- Left: Investigation Setup Form -->
+        <section class="card setup-card" aria-labelledby="setup-title">
+          <div class="card-header">
+            <div class="header-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            </div>
+            <h2 id="setup-title">Investigation Setup</h2>
+          </div>
+          
+          <form id="investigation-form" class="setup-form" novalidate>
+            <!-- Vendor Code Input -->
+            <div class="form-group">
+              <label for="vendor-code-input">Vendor Code <span class="required">*</span></label>
+              <input type="text" id="vendor-code-input" name="vendorCode" placeholder="Enter Vendor Code" required autocomplete="off">
+              <span class="error-msg" id="vendor-code-error"></span>
+            </div>
+            
+            <!-- Invoice Seller Dropdown -->
+            <div class="form-group">
+              <label for="invoice-seller-select">Invoice Seller Dataset <span class="required">*</span></label>
+              <div class="select-wrapper">
+                <select id="invoice-seller-select" name="invoiceSeller" required>
+                  <option value="" disabled selected>Loading sellers...</option>
+                </select>
+                <div class="select-spinner" id="invoice-select-spinner"></div>
+              </div>
+              <span class="error-msg" id="invoice-seller-error"></span>
+            </div>
+            
+            <!-- REBNI Seller Dropdown -->
+            <div class="form-group">
+              <label for="rebni-seller-select">REBNI Seller Dataset <span class="required">*</span></label>
+              <div class="select-wrapper">
+                <select id="rebni-seller-select" name="rebniSeller" required>
+                  <option value="" disabled selected>Loading sellers...</option>
+                </select>
+                <div class="select-spinner" id="rebni-select-spinner"></div>
+              </div>
+              <span class="error-msg" id="rebni-seller-error"></span>
+            </div>
+            
+            <!-- Start Investigation Button -->
+            <button type="submit" id="start-investigation-btn" class="primary-btn" disabled>
+              <span class="btn-text">Start Investigation</span>
+              <span class="btn-spinner" id="btn-spinner"></span>
+            </button>
+          </form>
+          <div id="general-error" class="general-error-container hidden"></div>
+        </section>
+
+        <!-- Right: Summary Metrics -->
+        <section class="card summary-card" aria-labelledby="summary-title">
+          <div class="card-header">
+            <div class="header-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+            </div>
+            <h2 id="summary-title">Investigation Summary</h2>
+            <div id="active-investigation-indicator" class="active-badge hidden">Active</div>
+          </div>
+          
+          <!-- Summary Display / Phase 1 Statistics -->
+          <div id="summary-stats-container" class="summary-placeholder">
+            <div class="empty-state">
+              <div class="empty-icon">🕵️</div>
+              <p>Configure investigation setup and click <strong>Start Investigation</strong> to view statistics.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Middle Grid: Main Data Tables -->
+      <div class="dashboard-grid middle-grid">
+        <!-- Invoice Analysis Table Card -->
+        <section class="card data-table-card" id="invoice-analysis-section" aria-labelledby="invoice-table-title">
+          <div class="card-header table-card-header">
+            <div class="header-left">
+              <div class="header-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              </div>
+              <h2 id="invoice-table-title">Invoice Analysis</h2>
+            </div>
+            <div class="header-actions table-actions hidden" id="invoice-table-actions">
+              <input type="text" id="invoice-search-input" class="search-input" placeholder="Search Invoices...">
+            </div>
+          </div>
+          
+          <div class="table-container" id="invoice-table-container">
+            <div class="empty-state">
+              <p>Invoice data will be displayed here after running the investigation.</p>
+            </div>
+          </div>
+          
+          <div class="table-pagination-container hidden" id="invoice-pagination">
+            <!-- Rendered dynamically -->
+          </div>
+        </section>
+
+        <!-- REBNI Analysis Table Card -->
+        <section class="card data-table-card" id="rebni-analysis-section" aria-labelledby="rebni-table-title">
+          <div class="card-header table-card-header">
+            <div class="header-left">
+              <div class="header-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+              </div>
+              <h2 id="rebni-table-title">REBNI Analysis</h2>
+            </div>
+            <div class="header-actions table-actions hidden" id="rebni-table-actions">
+              <input type="text" id="rebni-search-input" class="search-input" placeholder="Search REBNI...">
+            </div>
+          </div>
+          
+          <div class="table-container" id="rebni-table-container">
+            <div class="empty-state">
+              <p>REBNI data will be displayed here after running the investigation.</p>
+            </div>
+          </div>
+          
+          <div class="table-pagination-container hidden" id="rebni-pagination">
+            <!-- Rendered dynamically -->
+          </div>
+        </section>
+      </div>
+
+      <!-- Bottom Grid: Future Placeholders -->
+      <div class="dashboard-grid bottom-grid">
+        
+        <!-- Findings & Exceptions Placeholder -->
+        <section class="card placeholder-card" id="findings-section" aria-labelledby="findings-title">
+          <div class="card-header">
+            <div class="header-icon warning-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </div>
+            <h2 id="findings-title">Findings & Exceptions</h2>
+          </div>
+          <div class="card-body placeholder-body">
+            <div class="future-badge">Coming in Phase 2</div>
+            <p class="placeholder-text">Investigation rules and anomaly detection will run automatically on the filtered datasets. Detailed exceptions, mismatches, and validation errors will be listed here with supporting evidence.</p>
+            <div class="mock-ui-elements">
+              <div class="mock-item error-row"></div>
+              <div class="mock-item error-row"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Investigation Timeline Placeholder -->
+        <section class="card placeholder-card" id="timeline-section" aria-labelledby="timeline-title">
+          <div class="card-header">
+            <div class="header-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+            <h2 id="timeline-title">Investigation Timeline</h2>
+          </div>
+          <div class="card-body placeholder-body">
+            <div class="future-badge">Coming in Phase 3</div>
+            <p class="placeholder-text">Displays a temporal sequence mapping invoice creation, purchase orders, shipments, unpacked events, post-adjustment quantities, and final matches. Helps visualize the sequence of discrepancies.</p>
+            <div class="mock-ui-elements timeline-mock">
+              <div class="mock-node"></div>
+              <div class="mock-node"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Recommended Actions Placeholder -->
+        <section class="card placeholder-card" id="actions-section" aria-labelledby="actions-title">
+          <div class="card-header">
+            <div class="header-icon success-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+            </div>
+            <h2 id="actions-title">Recommended Actions</h2>
+          </div>
+          <div class="card-body placeholder-body">
+            <div class="future-badge">Coming in Phase 4</div>
+            <p class="placeholder-text">AI-suggested remediation steps for Rohit Singh. Proposes chargeback claims, updates to adjustments, or contacting vendors for specific purchase orders with draft emails or action buttons.</p>
+            <div class="mock-ui-elements">
+              <div class="mock-item btn-row"></div>
+            </div>
+          </div>
+        </section>
+        
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="dashboard-footer">
+      <p>&copy; 2026 PD Investigation Dashboard &bull; All rights reserved &bull; Rohit Singh</p>
+    </footer>
+  </div>
+  
+  <script src="app.js"></script>
+</body>
+</html>

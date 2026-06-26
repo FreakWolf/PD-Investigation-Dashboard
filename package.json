@@ -1,0 +1,16 @@
+{
+  "name": "pd-investigation-dashboard",
+  "version": "1.0.0",
+  "description": "Automated Invoice & REBNI Investigation System",
+  "type": "module",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node --max-old-space-size=8192 server/server.js",
+    "dev": "node --max-old-space-size=8192 server/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
