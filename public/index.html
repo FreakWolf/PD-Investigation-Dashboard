@@ -97,30 +97,74 @@
           <div id="general-error" class="general-error-container hidden"></div>
 
           <!-- Investigation Engine Form (Enabled after Phase 1 data ingestion) -->
-          <div id="engine-runner-section" class="engine-runner hidden">
+          <div id="engine-runner-section" class="engine-runner">
             <hr class="section-divider">
-            <h3 class="section-subtitle">Run Investigation Engine</h3>
+            <h3 class="section-subtitle">Investigate (HUBs)</h3>
             <form id="engine-form" class="setup-form" novalidate>
               <!-- Invoice Number Input -->
               <div class="form-group">
-                <label for="invoice-input">Invoice Number <span class="required">*</span></label>
-                <input type="text" id="invoice-input" name="invoiceNumber" placeholder="Enter Invoice Number" list="invoice-list" required autocomplete="off">
+                <label for="invoice-input">Invoice Number(s) <span class="required">*</span> <span class="label-desc">(comma-separated)</span></label>
+                <input type="text" id="invoice-input" name="invoiceNumber" placeholder="e.g. INV/001, INV/002" list="invoice-list" required autocomplete="off">
                 <datalist id="invoice-list"></datalist>
               </div>
-              
-              <!-- Warehouse ID Input -->
+
+              <!-- ASIN Input -->
               <div class="form-group">
-                <label for="warehouse-input">Warehouse ID <span class="required">*</span></label>
-                <input type="text" id="warehouse-input" name="warehouseId" placeholder="Enter Warehouse ID" list="warehouse-list" required autocomplete="off">
-                <datalist id="warehouse-list"></datalist>
+                <label for="asin-input">ASIN(s) <span class="required">*</span> <span class="label-desc">(comma-separated)</span></label>
+                <input type="text" id="asin-input" name="asin" placeholder="e.g. B0CXXG2CKL, B094XSDC41" list="asin-list" required autocomplete="off">
+                <datalist id="asin-list"></datalist>
               </div>
-              
-              <button type="submit" id="run-engine-btn" class="primary-btn run-btn">
-                <span class="btn-text">Run Engine</span>
-                <span class="btn-spinner" id="engine-btn-spinner"></span>
-              </button>
+
+              <!-- Missing QTY & Cost Price Row -->
+              <div class="form-row">
+                <div class="form-group col-6">
+                  <label for="missing-qty-input">Missing QTY <span class="label-desc">(from HUBs, comma-sep for multiple ASINs)</span></label>
+                  <input type="text" id="missing-qty-input" name="missingQty" placeholder="e.g. 2 or 2,5" autocomplete="off">
+                </div>
+                <div class="form-group col-6">
+                  <label for="cp-input">CP (Cost Price) <span class="label-desc">(comma-sep for multiple ASINs)</span></label>
+                  <input type="text" id="cp-input" name="cp" placeholder="e.g. 1042.37 or 1042.37,500" autocomplete="off">
+                </div>
+              </div>
+
+              <!-- Warehouse ID & Received Date Row -->
+              <div class="form-row">
+                <div class="form-group col-6">
+                  <label for="warehouse-input">FC / Warehouse ID</label>
+                  <input type="text" id="warehouse-input" name="warehouseId" placeholder="e.g. BLR4" list="warehouse-list" autocomplete="off">
+                  <datalist id="warehouse-list"></datalist>
+                </div>
+                <div class="form-group col-6">
+                  <label for="received-date-input">Received Date</label>
+                  <input type="date" id="received-date-input" name="receivedDate" class="date-picker-input">
+                </div>
+              </div>
+
+              <!-- Shipment ID Input -->
+              <div class="form-group">
+                <label for="shipment-input">Shipment ID <span class="label-desc">(optional, comma-separated)</span></label>
+                <input type="text" id="shipment-input" name="shipmentId" placeholder="e.g. WD6ZX-HDL2-132685006982-041" autocomplete="off">
+              </div>
+
+              <!-- PO Input -->
+              <div class="form-group">
+                <label for="po-input">PO(s) <span class="label-desc">(comma-separated, optional)</span></label>
+                <input type="text" id="po-input" name="po" placeholder="e.g. 1QQ216FD" autocomplete="off">
+              </div>
+
+              <!-- Buttons Row -->
+              <div class="form-buttons-row">
+                <button type="submit" id="run-engine-btn" class="primary-btn run-btn">
+                  <span class="btn-text">🚀 Investigate (HUBs)</span>
+                  <span class="btn-spinner" id="engine-btn-spinner"></span>
+                </button>
+                <button type="button" id="clear-engine-btn" class="icon-btn-clear" title="Clear Form">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="trash-icon"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                </button>
+              </div>
             </form>
             <div id="engine-error" class="general-error-container hidden"></div>
+            <div id="engine-warning" class="general-warning-container text-danger">Upload Invoice & REBNI files first.</div>
           </div>
         </section>
 
@@ -156,7 +200,18 @@
               <h2 id="invoice-table-title">Invoice Analysis</h2>
             </div>
             <div class="header-actions table-actions hidden" id="invoice-table-actions">
+              <input type="text" id="invoice-asin-filter" class="search-input filter-input" placeholder="Filter ASIN..." list="invoice-asin-list" aria-label="Filter by ASIN">
+              <datalist id="invoice-asin-list"></datalist>
+              <input type="text" id="invoice-number-filter" class="search-input filter-input" placeholder="Filter Invoice..." list="invoice-number-list" aria-label="Filter by Invoice">
+              <datalist id="invoice-number-list"></datalist>
+              <input type="text" id="invoice-matched-po-filter" class="search-input filter-input" placeholder="Filter Matched PO..." list="invoice-matched-po-list" aria-label="Filter by Matched PO">
+              <datalist id="invoice-matched-po-list"></datalist>
+              <input type="text" id="invoice-matched-asin-filter" class="search-input filter-input" placeholder="Filter Matched ASIN..." list="invoice-matched-asin-list" aria-label="Filter by Matched ASIN">
+              <datalist id="invoice-matched-asin-list"></datalist>
               <input type="text" id="invoice-search-input" class="search-input" placeholder="Search Invoices...">
+              <button id="invoice-download-btn" class="secondary-btn btn-sm" title="Download CSV">
+                <span class="btn-text">📥 Download CSV</span>
+              </button>
             </div>
           </div>
           
@@ -181,7 +236,18 @@
               <h2 id="rebni-table-title">REBNI Analysis</h2>
             </div>
             <div class="header-actions table-actions hidden" id="rebni-table-actions">
+              <input type="text" id="rebni-asin-filter" class="search-input filter-input" placeholder="Filter ASIN..." list="rebni-asin-list" aria-label="Filter by ASIN">
+              <datalist id="rebni-asin-list"></datalist>
+              <input type="text" id="rebni-po-filter" class="search-input filter-input" placeholder="Filter PO..." list="rebni-po-list" aria-label="Filter by PO">
+              <datalist id="rebni-po-list"></datalist>
+              <input type="text" id="rebni-warehouse-filter" class="search-input filter-input" placeholder="Filter Warehouse..." list="rebni-warehouse-list" aria-label="Filter by Warehouse">
+              <datalist id="rebni-warehouse-list"></datalist>
+              <input type="text" id="rebni-start-date-filter" class="search-input filter-input" placeholder="Start Date (YYYY-MM-DD)" aria-label="Start Date" title="Start Date (YYYY-MM-DD)">
+              <input type="text" id="rebni-end-date-filter" class="search-input filter-input" placeholder="End Date (YYYY-MM-DD)" aria-label="End Date" title="End Date (YYYY-MM-DD)">
               <input type="text" id="rebni-search-input" class="search-input" placeholder="Search REBNI...">
+              <button id="rebni-download-btn" class="secondary-btn btn-sm" title="Download CSV">
+                <span class="btn-text">📥 Download CSV</span>
+              </button>
             </div>
           </div>
           
@@ -208,6 +274,10 @@
               <h2 id="batch-table-title">Batch Investigation Scanner</h2>
             </div>
             <div class="header-actions table-actions" id="batch-table-actions">
+              <input type="text" id="batch-invoice-filter" class="search-input filter-input" placeholder="Filter Invoice..." list="batch-invoice-list" aria-label="Filter by Invoice">
+              <datalist id="batch-invoice-list"></datalist>
+              <input type="text" id="batch-asin-filter" class="search-input filter-input" placeholder="Filter ASIN..." list="batch-asin-list" aria-label="Filter by ASIN">
+              <datalist id="batch-asin-list"></datalist>
               <input type="text" id="batch-search-input" class="search-input" placeholder="Search Batch Results...">
             </div>
           </div>
@@ -223,7 +293,7 @@
       </div>
 
       <!-- Bottom Section: Phase 2 Investigation Results -->
-      <div id="engine-results-section" class="dashboard-grid bottom-grid hidden">
+      <div id="engine-results-section" class="dashboard-grid results-grid hidden">
         <!-- Left: ASIN Tabs Selection -->
         <section class="card asin-list-card" aria-labelledby="asin-list-title">
           <div class="card-header">
@@ -248,38 +318,51 @@
           </div>
           <div class="card-body" id="asin-detail-body">
             <!-- Master Details Grid -->
-            <div class="metrics-card-grid">
-              <div class="metric-mini-card">
-                <span class="label">Invoice Number</span>
-                <span class="value" id="card-invoice-number">-</span>
+            <div class="details-metadata-section">
+              <div class="metadata-row">
+                <span class="meta-label">Invoice Number</span>
+                <span class="meta-value" id="card-invoice-number">-</span>
               </div>
-              <div class="metric-mini-card">
-                <span class="label">ASIN</span>
-                <span class="value" id="card-asin">-</span>
+              <div class="metadata-row">
+                <span class="meta-label">ASIN</span>
+                <span class="meta-value" id="card-asin">-</span>
               </div>
-              <div class="metric-mini-card">
-                <span class="label">PO Number</span>
-                <span class="value" id="card-po">-</span>
+              <div class="metadata-row">
+                <span class="meta-label">PO Number</span>
+                <span class="meta-value" id="card-po">-</span>
               </div>
-              <div class="metric-mini-card">
-                <span class="label">Warehouse ID</span>
-                <span class="value" id="card-warehouse">-</span>
+              <div class="metadata-row">
+                <span class="meta-label">Warehouse ID</span>
+                <span class="meta-value" id="card-warehouse">-</span>
               </div>
-              <div class="metric-mini-card">
-                <span class="label">Invoice Status</span>
-                <span class="value" id="card-status">-</span>
+              <div class="metadata-row">
+                <span class="meta-label">Invoice Status</span>
+                <span class="meta-value" id="card-status">-</span>
               </div>
-              <div class="metric-mini-card">
-                <span class="label">Billed Qty</span>
-                <span class="value font-accent" id="card-billed-qty">-</span>
+            </div>
+
+            <!-- Highlight Metrics Row -->
+            <div class="metrics-highlight-row">
+              <div class="highlight-metric-card billed">
+                <span class="metric-icon">📦</span>
+                <div class="metric-info">
+                  <span class="metric-label">Billed Qty</span>
+                  <span class="metric-value" id="card-billed-qty">-</span>
+                </div>
               </div>
-              <div class="metric-mini-card">
-                <span class="label">Received Qty</span>
-                <span class="value font-success" id="card-received-qty">-</span>
+              <div class="highlight-metric-card received">
+                <span class="metric-icon">✔</span>
+                <div class="metric-info">
+                  <span class="metric-label">Received Qty</span>
+                  <span class="metric-value" id="card-received-qty">-</span>
+                </div>
               </div>
-              <div class="metric-mini-card">
-                <span class="label">Missing Qty</span>
-                <span class="value font-danger" id="card-missing-qty">-</span>
+              <div class="highlight-metric-card missing">
+                <span class="metric-icon">⚠️</span>
+                <div class="metric-info">
+                  <span class="metric-label">Missing Qty</span>
+                  <span class="metric-value" id="card-missing-qty">-</span>
+                </div>
               </div>
             </div>
 
@@ -295,7 +378,7 @@
               <!-- Generated Blub -->
               <div class="results-blub-panel">
                 <div class="blub-header">
-                  <h3>Generated Blub / Internal Note</h3>
+                  <h3>Generated Blurb / Internal Note</h3>
                   <button id="copy-blub-btn" class="secondary-btn btn-sm copy-btn">
                     <span class="btn-text">Copy</span>
                   </button>

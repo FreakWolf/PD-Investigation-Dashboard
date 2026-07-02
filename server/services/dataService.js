@@ -181,7 +181,9 @@ export function filterTsvByVendorCode(filePath, vendorCode, expectedColumns) {
       const record = {};
       expectedColumns.forEach(col => {
         const colIdx = headers.indexOf(col);
-        record[col] = (colIdx !== -1 && colIdx < parts.length) ? parts[colIdx].trim() : '';
+        const rawVal = (colIdx !== -1 && colIdx < parts.length) ? parts[colIdx].trim() : '';
+        // Force string copy to avoid memory retention of the large readline buffer
+        record[col] = (' ' + rawVal).slice(1);
       });
       matchedRecords.push(record);
     });
@@ -189,6 +191,16 @@ export function filterTsvByVendorCode(filePath, vendorCode, expectedColumns) {
     rl.on('close', () => {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`[CACHE MISS] ${path.basename(filePath)} for ${targetVendor} → ${matchedRecords.length} records in ${elapsed}s`);
+      
+      // KEY MEMORY PROTECTION: Evict oldest cache entry if cache is growing to prevent Out of Memory
+      if (queryCache.size >= 4) {
+        const oldestKey = queryCache.keys().next().value;
+        if (oldestKey) {
+          queryCache.delete(oldestKey);
+          console.log(`[CACHE EVICT] Evicted old cache entry to save memory: ${oldestKey}`);
+        }
+      }
+
       // Store in cache and remove from inFlight
       queryCache.set(cacheKey, matchedRecords);
       inFlight.delete(cacheKey);

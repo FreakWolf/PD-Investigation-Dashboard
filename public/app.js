@@ -30,11 +30,80 @@ document.addEventListener('DOMContentLoaded', () => {
   const engineRunnerSection = document.getElementById('engine-runner-section');
   const engineForm = document.getElementById('engine-form');
   const engineInvoiceInput = document.getElementById('invoice-input');
+  const engineAsinInput = document.getElementById('asin-input');
+  const engineAsinList = document.getElementById('asin-list');
+  const engineMissingQtyInput = document.getElementById('missing-qty-input');
+  const engineCpInput = document.getElementById('cp-input');
   const engineWarehouseInput = document.getElementById('warehouse-input');
   const engineWarehouseList = document.getElementById('warehouse-list');
+  const engineReceivedDateInput = document.getElementById('received-date-input');
+  const engineShipmentInput = document.getElementById('shipment-input');
+  const enginePoInput = document.getElementById('po-input');
   const runEngineBtn = document.getElementById('run-engine-btn');
+  const clearEngineBtn = document.getElementById('clear-engine-btn');
   const engineBtnSpinner = document.getElementById('engine-btn-spinner');
   const engineError = document.getElementById('engine-error');
+  const engineWarning = document.getElementById('engine-warning');
+
+  function setEngineFormActive(active) {
+    const inputs = [
+      engineInvoiceInput,
+      engineAsinInput,
+      engineMissingQtyInput,
+      engineCpInput,
+      engineWarehouseInput,
+      engineReceivedDateInput,
+      engineShipmentInput,
+      enginePoInput
+    ];
+    inputs.forEach(input => {
+      if (input) input.disabled = !active;
+    });
+    if (runEngineBtn) runEngineBtn.disabled = !active;
+    if (clearEngineBtn) clearEngineBtn.disabled = !active;
+    if (active) {
+      if (engineWarning) engineWarning.classList.add('hidden');
+    } else {
+      if (engineWarning) engineWarning.classList.remove('hidden');
+    }
+  }
+
+  async function checkSession() {
+    try {
+      const response = await fetch('/api/session');
+      if (!response.ok) {
+        setEngineFormActive(false);
+        return;
+      }
+      const data = await response.json();
+      if (data.active) {
+        invoiceData = data.session.invoiceRecords || [];
+        rebniData = data.session.rebniRecords || [];
+        
+        activeBadge.classList.remove('hidden');
+        renderSummaryStats(data.session.stats);
+        
+        initTable('invoice', invoiceData, INVOICE_HEADERS);
+        initTable('rebni', rebniData, REBNI_HEADERS);
+        
+        populateEngineInputs();
+        setEngineFormActive(true);
+        
+        renderTableLoading('batch-table-container');
+        const batchSummaryRes = await fetch('/api/investigate/batch-summary');
+        if (batchSummaryRes.ok) {
+          const batchData = await batchSummaryRes.json();
+          document.getElementById('batch-summary-section').classList.remove('hidden');
+          initBatchTable(batchData);
+        }
+      } else {
+        setEngineFormActive(false);
+      }
+    } catch (e) {
+      console.error('Session restore error:', e);
+      setEngineFormActive(false);
+    }
+  }
   
   const engineResultsSection = document.getElementById('engine-results-section');
   const asinTabsList = document.getElementById('asin-tabs-list');
@@ -220,6 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Populate Phase 2 Engine Inputs
       populateEngineInputs();
+      setEngineFormActive(true);
 
       // Fetch and display batch summary
       renderTableLoading('batch-table-container');
@@ -368,23 +438,117 @@ document.addEventListener('DOMContentLoaded', () => {
     let sortAsc = true;
     let currentPage = 1;
     
+    // Get filter inputs
+    const asinFilter = document.getElementById(`${type}-asin-filter`);
+    const numberFilter = document.getElementById(`${type}-number-filter`);
+    const poFilter = document.getElementById(`${type}-po-filter`);
+    const warehouseFilter = document.getElementById(`${type}-warehouse-filter`);
+    const matchedPoFilter = document.getElementById(`${type}-matched-po-filter`);
+    const matchedAsinFilter = document.getElementById(`${type}-matched-asin-filter`);
+    const startDateFilter = document.getElementById(`${type}-start-date-filter`);
+    const endDateFilter = document.getElementById(`${type}-end-date-filter`);
+    
     // Clear and show search actions
     searchInput.value = '';
+    if (asinFilter) asinFilter.value = '';
+    if (numberFilter) numberFilter.value = '';
+    if (poFilter) poFilter.value = '';
+    if (warehouseFilter) warehouseFilter.value = '';
+    if (matchedPoFilter) matchedPoFilter.value = '';
+    if (matchedAsinFilter) matchedAsinFilter.value = '';
+    if (startDateFilter) startDateFilter.value = '';
+    if (endDateFilter) endDateFilter.value = '';
     actionPanel.classList.remove('hidden');
     
-    // Set up search handler
-    searchInput.oninput = () => {
+    // Datalist population helper
+    const populateDatalist = (id, values) => {
+      const dl = document.getElementById(id);
+      if (!dl) return;
+      dl.innerHTML = '';
+      values.forEach(v => {
+        if (v !== undefined && v !== null && v !== '') {
+          const opt = document.createElement('option');
+          opt.value = v;
+          dl.appendChild(opt);
+        }
+      });
+    };
+
+    if (type === 'invoice') {
+      const uniqueAsins = Array.from(new Set(rawData.map(r => r.asin))).sort();
+      const uniqueInvoices = Array.from(new Set(rawData.map(r => r.invoice_number))).sort();
+      const uniqueMatchedPos = Array.from(new Set(rawData.map(r => r.matched_po))).sort();
+      const uniqueMatchedAsins = Array.from(new Set(rawData.map(r => r.matched_asin))).sort();
+      populateDatalist('invoice-asin-list', uniqueAsins);
+      populateDatalist('invoice-number-list', uniqueInvoices);
+      populateDatalist('invoice-matched-po-list', uniqueMatchedPos);
+      populateDatalist('invoice-matched-asin-list', uniqueMatchedAsins);
+    } else if (type === 'rebni') {
+      const uniqueAsins = Array.from(new Set(rawData.map(r => r.asin))).sort();
+      const uniquePos = Array.from(new Set(rawData.map(r => r.po))).sort();
+      const uniqueWarehouses = Array.from(new Set(rawData.map(r => r.warehouse_id))).sort();
+      populateDatalist('rebni-asin-list', uniqueAsins);
+      populateDatalist('rebni-po-list', uniquePos);
+      populateDatalist('rebni-warehouse-list', uniqueWarehouses);
+    }
+    
+    const applyFilters = () => {
       const query = searchInput.value.toLowerCase().trim();
-      if (!query) {
-        filteredData = [...rawData];
-      } else {
-        filteredData = rawData.filter(row => {
-          return Object.values(row).some(val => String(val).toLowerCase().includes(query));
-        });
-      }
+      const asinVal = asinFilter ? asinFilter.value.toLowerCase().trim() : '';
+      const numberVal = numberFilter ? numberFilter.value.toLowerCase().trim() : '';
+      const poVal = poFilter ? poFilter.value.toLowerCase().trim() : '';
+      const warehouseVal = warehouseFilter ? warehouseFilter.value.toLowerCase().trim() : '';
+      const matchedPoVal = matchedPoFilter ? matchedPoFilter.value.toLowerCase().trim() : '';
+      const matchedAsinVal = matchedAsinFilter ? matchedAsinFilter.value.toLowerCase().trim() : '';
+      const startDateVal = startDateFilter ? startDateFilter.value : '';
+      const endDateVal = endDateFilter ? endDateFilter.value : '';
+
+      filteredData = rawData.filter(row => {
+        const matchesQuery = !query || Object.values(row).some(val => String(val).toLowerCase().includes(query));
+        const matchesAsin = !asinVal || (row.asin && String(row.asin).toLowerCase().includes(asinVal));
+        const matchesNumber = !numberVal || (row.invoice_number && String(row.invoice_number).toLowerCase().includes(numberVal));
+        const matchesPo = !poVal || (row.po && String(row.po).toLowerCase().includes(poVal));
+        const matchesWarehouse = !warehouseVal || (row.warehouse_id && String(row.warehouse_id).toLowerCase().includes(warehouseVal));
+        const matchesMatchedPo = !matchedPoVal || (row.matched_po && String(row.matched_po).toLowerCase().includes(matchedPoVal));
+        const matchesMatchedAsin = !matchedAsinVal || (row.matched_asin && String(row.matched_asin).toLowerCase().includes(matchedAsinVal));
+
+        let matchesDateRange = true;
+        if (type === 'rebni' && (startDateVal || endDateVal)) {
+          const rowDateStr = row.received_datetime ? String(row.received_datetime).slice(0, 10) : '';
+          if (rowDateStr) {
+            if (startDateVal && rowDateStr < startDateVal) {
+              matchesDateRange = false;
+            }
+            if (endDateVal && rowDateStr > endDateVal) {
+              matchesDateRange = false;
+            }
+          } else {
+            matchesDateRange = false;
+          }
+        }
+
+        return matchesQuery && matchesAsin && matchesNumber && matchesPo && matchesWarehouse && matchesMatchedPo && matchesMatchedAsin && matchesDateRange;
+      });
+
       currentPage = 1;
       render();
     };
+
+    searchInput.oninput = applyFilters;
+    if (asinFilter) asinFilter.oninput = applyFilters;
+    if (numberFilter) numberFilter.oninput = applyFilters;
+    if (poFilter) poFilter.oninput = applyFilters;
+    if (warehouseFilter) warehouseFilter.oninput = applyFilters;
+    if (matchedPoFilter) matchedPoFilter.oninput = applyFilters;
+    if (matchedAsinFilter) matchedAsinFilter.oninput = applyFilters;
+    if (startDateFilter) {
+      startDateFilter.oninput = applyFilters;
+      startDateFilter.onchange = applyFilters;
+    }
+    if (endDateFilter) {
+      endDateFilter.oninput = applyFilters;
+      endDateFilter.onchange = applyFilters;
+    }
 
     function sortData(key) {
       if (sortKey === key) {
@@ -529,26 +693,57 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById(`batch-search-input`);
     const tableContainer = document.getElementById(`batch-table-container`);
     const paginationPanel = document.getElementById(`batch-pagination`);
+    const invoiceFilterSelect = document.getElementById('batch-invoice-filter');
+    const asinFilterSelect = document.getElementById('batch-asin-filter');
+    const invoiceDatalist = document.getElementById('batch-invoice-list');
+    const asinDatalist = document.getElementById('batch-asin-list');
     
     let filteredData = [...rawData];
     let sortKey = 'status';
     let sortAsc = true;
     let currentPage = 1;
+
+    // Populate datalists dynamically based on unique values
+    const invoices = Array.from(new Set(rawData.map(row => row.invoiceNumber).filter(Boolean))).sort();
+    const asins = Array.from(new Set(rawData.map(row => row.asin).filter(Boolean))).sort();
+
+    invoiceDatalist.innerHTML = '';
+    invoices.forEach(inv => {
+      const opt = document.createElement('option');
+      opt.value = inv;
+      invoiceDatalist.appendChild(opt);
+    });
+
+    asinDatalist.innerHTML = '';
+    asins.forEach(asin => {
+      const opt = document.createElement('option');
+      opt.value = asin;
+      asinDatalist.appendChild(opt);
+    });
     
     searchInput.value = '';
+    invoiceFilterSelect.value = '';
+    asinFilterSelect.value = '';
     
-    searchInput.oninput = () => {
+    const applyFilters = () => {
       const query = searchInput.value.toLowerCase().trim();
-      if (!query) {
-        filteredData = [...rawData];
-      } else {
-        filteredData = rawData.filter(row => {
-          return Object.values(row).some(val => String(val).toLowerCase().includes(query));
-        });
-      }
+      const invoiceFilterVal = invoiceFilterSelect.value.toLowerCase().trim();
+      const asinFilterVal = asinFilterSelect.value.toLowerCase().trim();
+
+      filteredData = rawData.filter(row => {
+        const matchesQuery = !query || Object.values(row).some(val => String(val).toLowerCase().includes(query));
+        const matchesInvoice = !invoiceFilterVal || String(row.invoiceNumber).toLowerCase().includes(invoiceFilterVal);
+        const matchesAsin = !asinFilterVal || String(row.asin).toLowerCase().includes(asinFilterVal);
+        return matchesQuery && matchesInvoice && matchesAsin;
+      });
+
       currentPage = 1;
       render();
     };
+
+    searchInput.oninput = applyFilters;
+    invoiceFilterSelect.oninput = applyFilters;
+    asinFilterSelect.oninput = applyFilters;
 
     function sortData(key) {
       if (sortKey === key) {
@@ -656,7 +851,11 @@ document.addEventListener('DOMContentLoaded', () => {
         runBtn.textContent = 'Run Audit';
         runBtn.onclick = () => {
           engineInvoiceInput.value = row.invoiceNumber;
+          engineAsinInput.value = row.asin;
           engineWarehouseInput.value = row.warehouseId || '';
+          engineMissingQtyInput.value = row.missingQty || '';
+          engineCpInput.value = row.cp ? String(row.cp) : '';
+          enginePoInput.value = row.po || '';
           
           // Trigger form submit
           engineForm.dispatchEvent(new Event('submit'));
@@ -739,6 +938,24 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    // 3. Extract unique ASINs
+    const asins = new Set();
+    invoiceData.forEach(r => {
+      if (r.asin) asins.add(r.asin.trim());
+    });
+    rebniData.forEach(r => {
+      if (r.asin) asins.add(r.asin.trim());
+    });
+    const sortedAsins = Array.from(asins).sort();
+    if (engineAsinList) {
+      engineAsinList.innerHTML = '';
+      sortedAsins.forEach(asin => {
+        const option = document.createElement('option');
+        option.value = asin;
+        engineAsinList.appendChild(option);
+      });
+    }
+
     // Hide previous results and show engine runner panel
     engineResultsSection.classList.add('hidden');
     engineRunnerSection.classList.remove('hidden');
@@ -755,15 +972,15 @@ document.addEventListener('DOMContentLoaded', () => {
     engineError.textContent = '';
 
     const invoiceNumber = engineInvoiceInput.value.trim();
-    const warehouseId = engineWarehouseInput.value.trim();
+    const asin = engineAsinInput.value.trim();
 
     if (!invoiceNumber) {
-      engineError.textContent = 'Please enter an Invoice Number.';
+      engineError.textContent = 'Please enter Invoice Number(s).';
       engineError.classList.remove('hidden');
       return;
     }
-    if (!warehouseId) {
-      engineError.textContent = 'Please enter a Warehouse ID.';
+    if (!asin) {
+      engineError.textContent = 'Please enter ASIN(s).';
       engineError.classList.remove('hidden');
       return;
     }
@@ -780,7 +997,16 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ invoiceNumber, warehouseId })
+        body: JSON.stringify({
+          invoiceNumber,
+          asin,
+          missingQty: engineMissingQtyInput.value.trim(),
+          cp: engineCpInput.value.trim(),
+          warehouseId: engineWarehouseInput.value.trim(),
+          receivedDate: engineReceivedDateInput.value.trim(),
+          shipmentId: engineShipmentInput.value.trim(),
+          po: enginePoInput.value.trim()
+        })
       });
 
       const result = await response.json();
@@ -790,13 +1016,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       activeAsinResults = result.asinResults || [];
+      const combinedBlurb = result.combinedBlurb || '';
+
       if (activeAsinResults.length === 0) {
-        throw new Error('No ASINs found to investigate under this invoice.');
+        throw new Error('No ASIN results found.');
       }
 
       // Show results grid
       engineResultsSection.classList.remove('hidden');
-      renderAsinTabs();
+      renderAsinTabs(combinedBlurb);
 
     } catch (error) {
       console.error(error);
@@ -805,20 +1033,44 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       runEngineBtn.disabled = false;
       engineBtnSpinner.style.display = 'none';
-      runEngineBtn.querySelector('.btn-text').textContent = 'Run Engine';
+      runEngineBtn.querySelector('.btn-text').textContent = '🚀 Investigate (HUBs)';
     }
   });
 
-  function renderAsinTabs() {
+  // Clear Engine Form Button Handler
+  if (clearEngineBtn) {
+    clearEngineBtn.addEventListener('click', () => {
+      engineForm.reset();
+      engineResultsSection.classList.add('hidden');
+      engineError.classList.add('hidden');
+      engineError.textContent = '';
+    });
+  }
+
+  function renderAsinTabs(combinedBlurb) {
     asinTabsList.innerHTML = '';
+
+    // Create a special tab for the Combined Blurb
+    const combinedTab = document.createElement('button');
+    combinedTab.className = 'asin-tab active';
+    combinedTab.innerHTML = `
+      <span class="asin-code">✨ Combined Blurb</span>
+      <span class="asin-badge primary">Combined</span>
+    `;
+    currentActiveAsin = '__combined__';
+
+    combinedTab.onclick = () => {
+      document.querySelectorAll('.asin-tab').forEach(t => t.classList.remove('active'));
+      combinedTab.classList.add('active');
+      currentActiveAsin = '__combined__';
+      displayCombinedDetail(combinedBlurb);
+    };
+    asinTabsList.appendChild(combinedTab);
     
-    activeAsinResults.forEach((asinRes, idx) => {
+    // Create tabs for each evaluated ASIN
+    activeAsinResults.forEach((asinRes) => {
       const tab = document.createElement('button');
       tab.className = 'asin-tab';
-      if (idx === 0) {
-        tab.classList.add('active');
-        currentActiveAsin = asinRes.asin;
-      }
 
       // Set class based on result status
       let resultClass = 'info';
@@ -842,10 +1094,100 @@ document.addEventListener('DOMContentLoaded', () => {
       asinTabsList.appendChild(tab);
     });
 
-    // Display first ASIN detail by default
-    if (activeAsinResults.length > 0) {
-      displayAsinDetail(activeAsinResults[0]);
-    }
+    // Default to the combined blurb
+    displayCombinedDetail(combinedBlurb);
+  }
+
+  function displayCombinedDetail(combinedBlurb) {
+    document.getElementById('card-invoice-number').textContent = engineInvoiceInput.value.trim();
+    document.getElementById('card-asin').textContent = activeAsinResults.map(r => r.asin).join(', ');
+    
+    const pos = Array.from(new Set(activeAsinResults.map(r => r.po).filter(p => p && p !== 'N/A')));
+    document.getElementById('card-po').textContent = pos.join(', ') || 'N/A';
+    document.getElementById('card-warehouse').textContent = engineWarehouseInput.value.trim() || 'N/A';
+    document.getElementById('card-status').textContent = 'Mixed Summary';
+
+    const totalBilled = activeAsinResults.reduce((acc, r) => acc + (parseInt(r.billedQty) || 0), 0);
+    const totalReceived = activeAsinResults.reduce((acc, r) => acc + (parseInt(r.receivedQty) || 0), 0);
+    const totalMissing = activeAsinResults.reduce((acc, r) => acc + (parseInt(r.missingQty) || 0), 0);
+
+    document.getElementById('card-billed-qty').textContent = totalBilled;
+    document.getElementById('card-received-qty').textContent = totalReceived;
+    document.getElementById('card-missing-qty').textContent = totalMissing;
+
+    const badge = document.getElementById('asin-result-badge');
+    badge.textContent = 'Combined';
+    badge.className = 'result-badge primary';
+
+    const headerIconContainer = document.getElementById('result-header-icon-container');
+    headerIconContainer.className = 'header-icon info-icon';
+
+    // Summary timeline
+    const timelineList = document.getElementById('card-timeline-list');
+    timelineList.innerHTML = '';
+
+    const summaryTimeline = [
+      `🔹 Started multi-item investigation process.`,
+      `✔ Total ASINs evaluated: ${activeAsinResults.length}`,
+      `✔ Fully Processed (Interfaced/Matched): ${activeAsinResults.filter(r => r.result.includes('Resolved') || r.result.includes('Completed')).length}`,
+      `⚠️ Discrepancies / Anomalies Found: ${activeAsinResults.filter(r => r.result.includes('Discrepancy') || r.result.includes('Error')).length}`,
+      `🔹 Combined findings compiled into a unified blurb below.`
+    ];
+
+    summaryTimeline.forEach(step => {
+      const item = document.createElement('div');
+      item.className = 'timeline-item';
+      
+      const isCheck = step.startsWith('✔');
+      const isWarning = step.startsWith('⚠️');
+      const isCross = step.startsWith('❌');
+
+      let iconHtml = '🔹';
+      let text = step;
+      let itemClass = '';
+
+      if (isCheck) {
+        iconHtml = '<span class="step-icon check-icon">✔</span>';
+        text = step.slice(1).trim();
+        itemClass = 'step-success';
+      } else if (isWarning) {
+        iconHtml = '<span class="step-icon warn-icon">⚠️</span>';
+        text = step.slice(1).trim();
+        itemClass = 'step-warning';
+      } else if (isCross) {
+        iconHtml = '<span class="step-icon error-icon">❌</span>';
+        text = step.slice(1).trim();
+        itemClass = 'step-error';
+      }
+
+      item.innerHTML = `
+        ${iconHtml}
+        <span class="step-text">${text}</span>
+      `;
+      if (itemClass) item.classList.add(itemClass);
+      timelineList.appendChild(item);
+    });
+
+    const blubPre = document.getElementById('card-blub-content');
+    blubPre.textContent = combinedBlurb;
+
+    copyBlubBtn.querySelector('.btn-text').textContent = 'Copy';
+    copyBlubBtn.classList.remove('success');
+
+    // Aggregate mini tables for all ASINs in this run
+    let allInvoiceRecords = [];
+    let allRebniRecords = [];
+    activeAsinResults.forEach(r => {
+      if (r.invoiceRecords) allInvoiceRecords.push(...r.invoiceRecords);
+      if (r.rebniRecords) allRebniRecords.push(...r.rebniRecords);
+    });
+    
+    // Deduplicate records to keep display clean
+    const uniqueInvoiceRecords = Array.from(new Map(allInvoiceRecords.map(item => [JSON.stringify(item), item])).values());
+    const uniqueRebniRecords = Array.from(new Map(allRebniRecords.map(item => [JSON.stringify(item), item])).values());
+
+    renderMiniTable('card-invoice-table-container', uniqueInvoiceRecords, INVOICE_HEADERS);
+    renderMiniTable('card-rebni-table-container', uniqueRebniRecords, REBNI_HEADERS);
   }
 
   function displayAsinDetail(asinRes) {
@@ -858,16 +1200,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('card-received-qty').textContent = asinRes.receivedQty;
     document.getElementById('card-missing-qty').textContent = asinRes.missingQty;
 
-    // Result Badge
     const badge = document.getElementById('asin-result-badge');
     badge.textContent = asinRes.result;
-    badge.className = 'result-badge'; // reset
+    badge.className = 'result-badge';
     if (asinRes.result === 'Resolved - Fully Processed') badge.classList.add('success');
     else if (asinRes.result === 'Completed') badge.classList.add('primary');
     else if (asinRes.result === 'Discrepancy Found') badge.classList.add('danger');
     else if (asinRes.result === 'Paused') badge.classList.add('warning');
 
-    // Header Icon class
     const headerIconContainer = document.getElementById('result-header-icon-container');
     headerIconContainer.className = 'header-icon';
     if (asinRes.result === 'Resolved - Fully Processed' || asinRes.result === 'Completed') {
@@ -878,7 +1218,6 @@ document.addEventListener('DOMContentLoaded', () => {
       headerIconContainer.classList.add('info-icon');
     }
 
-    // Timeline checklist
     const timelineList = document.getElementById('card-timeline-list');
     timelineList.innerHTML = '';
     asinRes.timeline.forEach(step => {
@@ -911,31 +1250,33 @@ document.addEventListener('DOMContentLoaded', () => {
         ${iconHtml}
         <span class="step-text">${text}</span>
       `;
-      if (itemClass) {
-        item.classList.add(itemClass);
-      }
+      if (itemClass) item.classList.add(itemClass);
       timelineList.appendChild(item);
     });
 
-    // Blub box
     const blubPre = document.getElementById('card-blub-content');
     blubPre.textContent = asinRes.generatedBlub;
 
-    // Reset copy button
     copyBlubBtn.querySelector('.btn-text').textContent = 'Copy';
     copyBlubBtn.classList.remove('success');
 
-    // Render Source Tables
     renderMiniTable('card-invoice-table-container', asinRes.invoiceRecords || [], INVOICE_HEADERS);
     renderMiniTable('card-rebni-table-container', asinRes.rebniRecords || [], REBNI_HEADERS);
   }
 
-  // Copy Blub Event
+  // Copy Blub Event (supports copying combined or individual blurb)
   copyBlubBtn.addEventListener('click', () => {
-    const activeRes = activeAsinResults.find(r => r.asin === currentActiveAsin);
-    if (!activeRes || !activeRes.generatedBlub) return;
+    let blurbToCopy = '';
+    if (currentActiveAsin === '__combined__') {
+      blurbToCopy = document.getElementById('card-blub-content').textContent;
+    } else {
+      const activeRes = activeAsinResults.find(r => r.asin === currentActiveAsin);
+      if (activeRes) blurbToCopy = activeRes.generatedBlub;
+    }
+    
+    if (!blurbToCopy) return;
 
-    navigator.clipboard.writeText(activeRes.generatedBlub).then(() => {
+    navigator.clipboard.writeText(blurbToCopy).then(() => {
       copyBlubBtn.querySelector('.btn-text').textContent = 'Copied!';
       copyBlubBtn.classList.add('success');
       setTimeout(() => {
@@ -992,7 +1333,48 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================================================
+  // CSV Downloader Utility
+  // ==========================================================================
+  // Hook up download buttons
+  const invoiceDownloadBtn = document.getElementById('invoice-download-btn');
+  const rebniDownloadBtn = document.getElementById('rebni-download-btn');
+
+  if (invoiceDownloadBtn) {
+    invoiceDownloadBtn.addEventListener('click', () => {
+      if (!invoiceData || invoiceData.length === 0) {
+        alert("No data available to download.");
+        return;
+      }
+      const query = document.getElementById('invoice-search-input').value;
+      const asin = document.getElementById('invoice-asin-filter').value;
+      const number = document.getElementById('invoice-number-filter').value;
+      const matchedPo = document.getElementById('invoice-matched-po-filter').value;
+      const matchedAsin = document.getElementById('invoice-matched-asin-filter').value;
+      const params = new URLSearchParams({ query, asin, number, matchedPo, matchedAsin });
+      window.location.href = `/api/download/invoice?${params.toString()}`;
+    });
+  }
+  
+  if (rebniDownloadBtn) {
+    rebniDownloadBtn.addEventListener('click', () => {
+      if (!rebniData || rebniData.length === 0) {
+        alert("No data available to download.");
+        return;
+      }
+      const query = document.getElementById('rebni-search-input').value;
+      const asin = document.getElementById('rebni-asin-filter').value;
+      const po = document.getElementById('rebni-po-filter').value;
+      const warehouse = document.getElementById('rebni-warehouse-filter').value;
+      const startDate = document.getElementById('rebni-start-date-filter').value;
+      const endDate = document.getElementById('rebni-end-date-filter').value;
+      const params = new URLSearchParams({ query, asin, po, warehouse, startDate, endDate });
+      window.location.href = `/api/download/rebni?${params.toString()}`;
+    });
+  }
+
+  // ==========================================================================
   // Start Application Ingest
   // ==========================================================================
   loadSellers();
+  checkSession();
 });

@@ -164,32 +164,7 @@ router.post('/investigate', async (req, res) => {
  * POST /api/investigate/run
  * Run the modular investigation engine against loaded records
  */
-router.post('/investigate/run', (req, res) => {
-  const { invoiceNumber, warehouseId } = req.body;
-
-  if (!invoiceNumber || !invoiceNumber.trim()) {
-    return res.status(400).json({ error: 'Invoice Number is required.' });
-  }
-
-  const session = investigationService.getActiveInvestigation();
-  if (!session || !session.vendorCode || session.invoiceRecords.length === 0) {
-    return res.status(400).json({ error: 'No active session. Please load seller/vendor data first.' });
-  }
-
-  try {
-    const runResult = investigationEngine.run(
-      session.invoiceRecords,
-      session.rebniRecords,
-      invoiceNumber.trim(),
-      warehouseId
-    );
-
-    res.json(runResult);
-  } catch (error) {
-    console.error('Run investigation error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
+// POST /api/investigate/run was consolidated below to support multi-item investigations.
 
 /**
  * GET /api/investigate/filters
@@ -226,12 +201,22 @@ router.get('/investigate/rebni-filters', (req, res) => {
  * Run the investigation rules for an Invoice Number and Warehouse ID, processing all ASINs
  */
 router.post('/investigate/run', (req, res) => {
-  const { invoiceNumber, warehouseId } = req.body;
-  if (!invoiceNumber) {
+  const { 
+    invoiceNumber, 
+    asin, 
+    missingQty, 
+    cp, 
+    warehouseId, 
+    receivedDate, 
+    shipmentId, 
+    po 
+  } = req.body;
+
+  if (!invoiceNumber || !invoiceNumber.trim()) {
     return res.status(400).json({ error: 'Invoice Number is required.' });
   }
-  if (!warehouseId) {
-    return res.status(400).json({ error: 'Warehouse ID is required.' });
+  if (!asin || !asin.trim()) {
+    return res.status(400).json({ error: 'ASIN is required.' });
   }
 
   try {
@@ -240,88 +225,20 @@ router.post('/investigate/run', (req, res) => {
       return res.status(400).json({ error: 'No active investigation session. Please start an investigation first.' });
     }
 
-    // Find all matching invoice records for this invoiceNumber (including suffix matches)
-    const invoicesForInvNum = session.invoiceRecords.filter(r => {
-      const dbInv = (r.invoice_number || '').trim().toLowerCase();
-      const queryInv = invoiceNumber.trim().toLowerCase();
-      return dbInv === queryInv || dbInv.startsWith(queryInv) || queryInv.startsWith(dbInv);
+    const runResult = investigationService.runInvestigationMulti({
+      invoiceNumber,
+      asin,
+      missingQty,
+      cp,
+      warehouseId,
+      receivedDate,
+      shipmentId,
+      po
     });
 
-    if (invoicesForInvNum.length === 0) {
-      return res.status(400).json({ error: `No invoice records found for Invoice Number: "${invoiceNumber}".` });
-    }
-
-    // Extract unique ASINs in this Invoice
-    const asinsInInvoice = Array.from(new Set(invoicesForInvNum.map(r => (r.asin || '').trim()).filter(Boolean)));
-
-    if (asinsInInvoice.length === 0) {
-      return res.status(400).json({ error: `No ASINs found in Invoice Number: "${invoiceNumber}".` });
-    }
-
-    const asinResults = [];
-
-    for (const asin of asinsInInvoice) {
-      // Find matching invoice rows for this ASIN in the invoice
-      const matchedInvoices = invoicesForInvNum.filter(r => (r.asin || '').trim() === asin);
-      const firstRec = matchedInvoices[0];
-      const po = (firstRec.purchase_order_id || '').trim();
-
-      // Find REBNI match for this ASIN and PO and warehouse
-      const matchedRebnis = session.rebniRecords.filter(r => 
-        (r.asin || '').trim() === asin && 
-        (r.warehouse_id || '').trim().toLowerCase() === warehouseId.trim().toLowerCase() && 
-        (r.po || '').trim() === po
-      );
-
-      // Run rules
-      const result = investigationService.runRulesInternal(invoiceNumber, asin, warehouseId, po, matchedInvoices, matchedRebnis);
-
-      // Map backend status to frontend result values:
-      let resultBadge = 'Paused';
-      if (result.status === 'Interfaced/Matched') {
-        resultBadge = 'Resolved - Fully Processed';
-      } else if (result.status === 'Matched (No Discrepancy)') {
-        resultBadge = 'Completed';
-      } else if (result.status === 'Discrepancy (Missing Qty)' || result.status === 'Invoice Mismatch' || result.status === 'Matched to Multiple') {
-        resultBadge = 'Discrepancy Found';
-      } else if (result.status === 'No REBNI Data' || result.status === '0 Matches in REBNI') {
-        resultBadge = 'Discrepancy Found';
-      }
-
-      // Map timeline to include checks / warnings / crosses
-      const timelineMapped = result.logs.map(log => {
-        if (log.startsWith('[ERROR]') || log.startsWith('Error:')) {
-          return `❌ ${log}`;
-        }
-        if (log.startsWith('[WARNING]') || log.startsWith('Warning:') || log.includes('mismatch') || log.includes('does NOT match')) {
-          return `⚠️ ${log}`;
-        }
-        if (log.includes('Success:') || log.includes('Rule Triggered:') || log.includes('Found REBNI record')) {
-          return `✔ ${log}`;
-        }
-        return `🔹 ${log}`;
-      });
-
-      asinResults.push({
-        asin,
-        invoiceNumber,
-        po,
-        warehouse: warehouseId,
-        invoiceStatus: matchedInvoices.map(r => r.invoice_item_status || 'N/A').join(', '),
-        billedQty: result.billed !== undefined ? result.billed : Math.max(...matchedInvoices.map(r => parseInt(r.quantity_invoiced) || 0)),
-        receivedQty: result.received !== undefined ? result.received : 0,
-        missingQty: result.missingQty !== undefined ? result.missingQty : 0,
-        result: resultBadge,
-        timeline: timelineMapped,
-        generatedBlub: result.blurb,
-        invoiceRecords: matchedInvoices,
-        rebniRecords: matchedRebnis
-      });
-    }
-
-    res.json({ success: true, asinResults });
-
+    res.json(runResult);
   } catch (error) {
+    console.error('Run multi investigation error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -349,6 +266,151 @@ router.get('/session', (req, res) => {
     return res.json({ active: false });
   }
   res.json({ active: true, session });
+});
+
+/**
+ * GET /api/download/invoice
+ * Export the current session's invoice records to CSV
+ */
+router.get('/download/invoice', (req, res) => {
+  try {
+    const session = investigationService.getActiveInvestigation();
+    if (!session || !session.invoiceRecords || session.invoiceRecords.length === 0) {
+      return res.status(400).send('No active invoice records to download.');
+    }
+
+    const headers = INVOICE_COLUMNS_SPEC;
+    const labelMap = {
+      purchase_order_id: 'PO ID',
+      asin: 'ASIN',
+      invoice_number: 'Invoice No.',
+      invoice_date: 'Invoice Date',
+      invoice_item_status: 'Status',
+      quantity_invoiced: 'Qty Invoiced',
+      quantity_matched: 'Qty Matched',
+      no_of_shipments: 'Shipment Count',
+      shipment_id: 'Shipment ID',
+      shipmentwise_matched_qty: 'Shipment Matched Qty',
+      matched_po: 'Matched PO',
+      matched_asin: 'Matched ASIN'
+    };
+
+    let records = session.invoiceRecords;
+    const query = req.query.query ? req.query.query.toLowerCase().trim() : '';
+    const asinVal = req.query.asin ? req.query.asin.toLowerCase().trim() : '';
+    const numberVal = req.query.number ? req.query.number.toLowerCase().trim() : '';
+    const matchedPoVal = req.query.matchedPo ? req.query.matchedPo.toLowerCase().trim() : '';
+    const matchedAsinVal = req.query.matchedAsin ? req.query.matchedAsin.toLowerCase().trim() : '';
+
+    if (query || asinVal || numberVal || matchedPoVal || matchedAsinVal) {
+      records = records.filter(row => {
+        const matchesQuery = !query || Object.values(row).some(val => String(val).toLowerCase().includes(query));
+        const matchesAsin = !asinVal || (row.asin && String(row.asin).toLowerCase().includes(asinVal));
+        const matchesNumber = !numberVal || (row.invoice_number && String(row.invoice_number).toLowerCase().includes(numberVal));
+        const matchesMatchedPo = !matchedPoVal || (row.matched_po && String(row.matched_po).toLowerCase().includes(matchedPoVal));
+        const matchesMatchedAsin = !matchedAsinVal || (row.matched_asin && String(row.matched_asin).toLowerCase().includes(matchedAsinVal));
+        return matchesQuery && matchesAsin && matchesNumber && matchesMatchedPo && matchesMatchedAsin;
+      });
+    }
+
+    const headerRow = headers.map(h => `"${(labelMap[h] || h).replace(/"/g, '""')}"`).join(',');
+    const dataRows = records.map(row => {
+      return headers.map(h => {
+        const val = row[h] !== undefined ? String(row[h]) : '';
+        return `"${val.replace(/"/g, '""')}"`;
+      }).join(',');
+    });
+
+    const csvContent = [headerRow, ...dataRows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=invoice_analysis_${new Date().toISOString().slice(0,10)}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Error downloading invoice CSV:', error);
+    res.status(500).send(error.message);
+  }
+});
+
+/**
+ * GET /api/download/rebni
+ * Export the current session's REBNI records to CSV
+ */
+router.get('/download/rebni', (req, res) => {
+  try {
+    const session = investigationService.getActiveInvestigation();
+    if (!session || !session.rebniRecords || session.rebniRecords.length === 0) {
+      return res.status(400).send('No active REBNI records to download.');
+    }
+
+    const headers = REBNI_COLUMNS;
+    const labelMap = {
+      po: 'PO ID',
+      asin: 'ASIN',
+      shipment_id: 'Shipment ID',
+      received_datetime: 'Received Date/Time',
+      warehouse_id: 'Warehouse',
+      item_cost: 'Cost',
+      quantity_unpacked: 'Qty Unpacked',
+      quantity_adjusted: 'Qty Adjusted',
+      qty_received_postadj: 'Post-Adj Qty',
+      quantity_matched: 'Qty Matched',
+      rebni_available: 'REBNI Avail',
+      cnt_invoice_matched: 'Matched Invoice Count',
+      matched_invoice_numbers: 'Matched Invoice No.'
+    };
+
+    let records = session.rebniRecords;
+    const query = req.query.query ? req.query.query.toLowerCase().trim() : '';
+    const asinVal = req.query.asin ? req.query.asin.toLowerCase().trim() : '';
+    const poVal = req.query.po ? req.query.po.toLowerCase().trim() : '';
+    const warehouseVal = req.query.warehouse ? req.query.warehouse.toLowerCase().trim() : '';
+    const startDateVal = req.query.startDate ? req.query.startDate : '';
+    const endDateVal = req.query.endDate ? req.query.endDate : '';
+
+    if (query || asinVal || poVal || warehouseVal || startDateVal || endDateVal) {
+      records = records.filter(row => {
+        const matchesQuery = !query || Object.values(row).some(val => String(val).toLowerCase().includes(query));
+        const matchesAsin = !asinVal || (row.asin && String(row.asin).toLowerCase().includes(asinVal));
+        const matchesPo = !poVal || (row.po && String(row.po).toLowerCase().includes(poVal));
+        const matchesWarehouse = !warehouseVal || (row.warehouse_id && String(row.warehouse_id).toLowerCase().includes(warehouseVal));
+        
+        let matchesDateRange = true;
+        if (startDateVal || endDateVal) {
+          const rowDateStr = row.received_datetime ? String(row.received_datetime).slice(0, 10) : '';
+          if (rowDateStr) {
+            if (startDateVal && rowDateStr < startDateVal) {
+              matchesDateRange = false;
+            }
+            if (endDateVal && rowDateStr > endDateVal) {
+              matchesDateRange = false;
+            }
+          } else {
+            matchesDateRange = false;
+          }
+        }
+
+        return matchesQuery && matchesAsin && matchesPo && matchesWarehouse && matchesDateRange;
+      });
+    }
+
+    const headerRow = headers.map(h => `"${(labelMap[h] || h).replace(/"/g, '""')}"`).join(',');
+    const dataRows = records.map(row => {
+      return headers.map(h => {
+        const val = row[h] !== undefined ? String(row[h]) : '';
+        return `"${val.replace(/"/g, '""')}"`;
+      }).join(',');
+    });
+
+    const csvContent = [headerRow, ...dataRows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=rebni_analysis_${new Date().toISOString().slice(0,10)}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Error downloading REBNI CSV:', error);
+    res.status(500).send(error.message);
+  }
 });
 
 /**
