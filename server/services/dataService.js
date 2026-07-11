@@ -2,13 +2,17 @@ import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
 import os from 'os';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ============================================================
 // UNC-safe path loader: reads .env manually to avoid dotenv
 // backslash parsing issues with Windows UNC paths (\\server\share)
 // ============================================================
 function loadEnvUncSafe() {
-  const envPath = path.join(process.cwd(), '.env');
+  const envPath = path.join(__dirname, '..', '..', '.env');
   if (!fs.existsSync(envPath)) return {};
 
   const result = {};
@@ -27,9 +31,10 @@ function loadEnvUncSafe() {
 
 const env = loadEnvUncSafe();
 
-// Resolve default paths relative to the user's local profile folder
-const fallbackInvoiceDir = path.join(os.homedir(), 'Downloads', 'PD App', 'Invoice');
-const fallbackRebniDir = path.join(os.homedir(), 'Downloads', 'PD App', 'REBNI');
+// Resolve default paths relative to the user's true Downloads folder
+const actualDownloads = process.env.ELECTRON_DOWNLOADS_PATH || path.join(os.homedir(), 'Downloads');
+const fallbackInvoiceDir = path.join(actualDownloads, 'PD App', 'Invoice');
+const fallbackRebniDir = path.join(actualDownloads, 'PD App', 'REBNI');
 
 // Load base paths - UNC network paths or local fallback path
 const BASE_INVOICE_DIR = env.INVOICE_DIR || fallbackInvoiceDir;
@@ -68,6 +73,14 @@ export function getCacheStats() {
  */
 export async function getAvailableSellers() {
   try {
+    // Automatically create directories if they don't exist to prevent crashes
+    if (!fs.existsSync(BASE_INVOICE_DIR)) {
+      fs.mkdirSync(BASE_INVOICE_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(BASE_REBNI_DIR)) {
+      fs.mkdirSync(BASE_REBNI_DIR, { recursive: true });
+    }
+
     const invoiceFiles = await fs.promises.readdir(BASE_INVOICE_DIR);
     const rebniFiles = await fs.promises.readdir(BASE_REBNI_DIR);
 
@@ -95,7 +108,7 @@ export async function getAvailableSellers() {
     return { invoiceSellers, rebniSellers };
   } catch (error) {
     console.error('Error scanning seller directories:', error);
-    throw new Error(`Failed to scan seller directories: ${error.message}`);
+    throw new Error(`Failed to scan seller directories. Checked paths: INVOICE="${BASE_INVOICE_DIR}", REBNI="${BASE_REBNI_DIR}". Details: ${error.message}`);
   }
 }
 
