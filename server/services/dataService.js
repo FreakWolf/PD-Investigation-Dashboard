@@ -36,9 +36,21 @@ const actualDownloads = process.env.ELECTRON_DOWNLOADS_PATH || path.join(os.home
 const fallbackInvoiceDir = path.join(actualDownloads, 'PD App', 'Invoice');
 const fallbackRebniDir = path.join(actualDownloads, 'PD App', 'REBNI');
 
+function resolvePathPlaceholders(p) {
+  if (!p) return p;
+  const username = os.userInfo().username;
+  const userprofile = os.homedir();
+  
+  let resolved = p;
+  resolved = resolved.replace(/<Current-User>/gi, username);
+  resolved = resolved.replace(/%USERNAME%/gi, username);
+  resolved = resolved.replace(/%USERPROFILE%/gi, userprofile);
+  return resolved;
+}
+
 // Load base paths - UNC network paths or local fallback path
-const BASE_INVOICE_DIR = env.INVOICE_DIR || fallbackInvoiceDir;
-const BASE_REBNI_DIR = env.REBNI_DIR || fallbackRebniDir;
+const BASE_INVOICE_DIR = resolvePathPlaceholders(env.INVOICE_DIR || fallbackInvoiceDir);
+const BASE_REBNI_DIR = resolvePathPlaceholders(env.REBNI_DIR || fallbackRebniDir);
 
 // ============================================================
 // Query Result Cache
@@ -153,11 +165,11 @@ export function filterTsvByVendorCode(filePath, vendorCode, expectedColumns) {
     const matchedRecords = [];
     const startTime = Date.now();
 
-    // KEY OPTIMIZATION: 64MB read buffer instead of default 64KB.
-    // For a 1.3GB network file, this cuts network round-trips from ~20,000 to ~20.
+    // KEY OPTIMIZATION: 1MB read buffer optimized for remote network shares.
+    // Minimizes SMB latency and avoids synchronization blocking.
     const fileStream = fs.createReadStream(filePath, {
       encoding: 'utf8',
-      highWaterMark: 64 * 1024 * 1024   // 64 MB
+      highWaterMark: 1 * 1024 * 1024   // 1 MB
     });
 
     const rl = readline.createInterface({
@@ -169,13 +181,11 @@ export function filterTsvByVendorCode(filePath, vendorCode, expectedColumns) {
     let headers = [];
     let isHeaderLine = true;
     let vendorIdx = -1;
+    let colIndices = [];
 
     rl.on('line', (line) => {
-      // Split line by tab character
-      const parts = line.split('\t');
-
       if (isHeaderLine) {
-        headers = parts.map(h => h.trim());
+        headers = line.split('\t').map(h => h.trim());
         vendorIdx = headers.indexOf('vendor_code');
         isHeaderLine = false;
 
@@ -183,17 +193,42 @@ export function filterTsvByVendorCode(filePath, vendorCode, expectedColumns) {
           rl.close();
           reject(new Error(`Column 'vendor_code' not found in file: ${path.basename(filePath)}`));
         }
+
+        // Pre-compute expected column indices once
+        colIndices = expectedColumns.map(col => headers.indexOf(col));
         return;
       }
 
-      // Fast early-exit: only check vendor_code column before building object
-      const rowVendor = parts[vendorIdx];
+      // Fast early-exit: scan vendor_code column in the raw line without splitting
+      let startIdx = 0;
+      for (let i = 0; i < vendorIdx; i++) {
+        startIdx = line.indexOf('\t', startIdx);
+        if (startIdx === -1) {
+          startIdx = -1;
+          break;
+        }
+        startIdx++; // step over the tab character
+      }
+
+      let rowVendor = '';
+      if (startIdx !== -1) {
+        const endIdx = line.indexOf('\t', startIdx);
+        if (endIdx === -1) {
+          rowVendor = line.slice(startIdx);
+        } else {
+          rowVendor = line.slice(startIdx, endIdx);
+        }
+      }
+
       if (!rowVendor || rowVendor.trim().toUpperCase() !== targetVendor) return;
+
+      // Split only when a vendor match is verified
+      const parts = line.split('\t');
 
       // Build record only for matching rows
       const record = {};
-      expectedColumns.forEach(col => {
-        const colIdx = headers.indexOf(col);
+      expectedColumns.forEach((col, idx) => {
+        const colIdx = colIndices[idx];
         const rawVal = (colIdx !== -1 && colIdx < parts.length) ? parts[colIdx].trim() : '';
         // Force string copy to avoid memory retention of the large readline buffer
         record[col] = (' ' + rawVal).slice(1);

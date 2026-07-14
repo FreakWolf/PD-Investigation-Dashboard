@@ -1,3 +1,5 @@
+import { runReconciliationLoop } from './investigation/reconciliationLoop.js';
+
 /**
  * Service to manage active investigations and run rules.
  * This is designed to be modular. Future investigation rules can be registered 
@@ -323,7 +325,114 @@ Please check and help locate the missing units against the above invoices.`
 
         logs.push(`Billed Qty (highest): ${billed}. Received Qty: ${received}. Missing Qty: ${missingQty}. CP: ${cp.toFixed(2)}.`);
 
-        let blurb = `Hello Team,
+        if (billed !== received || missingQty > 0) {
+          // Check for REBNI available inventory
+          let startDateStart = null;
+          let endDateStart = null;
+          const invDate = matchedInvoices.map(r => r.invoice_date).filter(Boolean)[0];
+          if (invDate) {
+            const startLimit = new Date(invDate);
+            if (!isNaN(startLimit.getTime())) {
+              startDateStart = new Date(startLimit.getFullYear(), startLimit.getMonth(), startLimit.getDate());
+              endDateStart = new Date(startDateStart);
+              endDateStart.setDate(startDateStart.getDate() + 30);
+            }
+          }
+
+          const availableRebniRecords = this.activeInvestigation.rebniRecords.filter(r => {
+            // 1. Fast short-circuiting checks first
+            const availQty = parseInt(r.rebni_available, 10) || 0;
+            if (availQty <= 0) return false;
+
+            const asinMatch = (r.asin || '').trim().toUpperCase() === asin.toUpperCase();
+            if (!asinMatch) return false;
+
+            const whMatch = warehouseId ? (r.warehouse_id || '').trim().toUpperCase() === warehouseId.toUpperCase() : true;
+            if (!whMatch) return false;
+
+            // 2. Slow date calculation only if other fields match
+            if (startDateStart && endDateStart && r.received_datetime) {
+              const rDate = new Date(r.received_datetime);
+              if (!isNaN(rDate.getTime())) {
+                const rDateStart = new Date(rDate.getFullYear(), rDate.getMonth(), rDate.getDate());
+                return rDateStart >= startDateStart && rDateStart <= endDateStart;
+              }
+            }
+            
+            return true;
+          });
+
+          if (availableRebniRecords.length > 0) {
+            const totalRebniAvail = availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
+            logs.push(`✔ REBNI Available Inventory checked: Found ${availableRebniRecords.length} records. Total available: ${totalRebniAvail}`);
+            
+            const detailsLines = availableRebniRecords.map(r => {
+              const rPo = (r.po || '').trim();
+              const rAsin = (r.asin || '').trim();
+              const rShip = (r.shipment_id || '').trim();
+              const rCost = parseFloat(r.item_cost) || 0;
+              const rAvail = parseInt(r.rebni_available, 10) || 0;
+              return `${rPo} | ${rAsin} | ${rShip} | ${rCost.toFixed(2)} | ${rAvail}`;
+            }).join('\n\n');
+
+            const closingText = totalRebniAvail >= missingQty
+              ? "Kindly utilize the available REBNI inventory and proceed with closing the PQV."
+              : "Kindly utilize the available REBNI inventory and provide with the updated PQV.";
+
+            const blurb = `Hi Team,
+
+REBNI inventory is available for the below ASIN${availableRebniRecords.length > 1 ? 's' : ''}:
+
+Details for reference:
+
+${detailsLines}
+
+${closingText}
+
+Regards,`;
+
+            return {
+              status: 'REBNI Inventory Available',
+              logs,
+              billed,
+              received,
+              missingQty,
+              cp,
+              blurb,
+              availableRebniRecords
+            };
+          }
+
+          logs.push(`Billed (${billed}) !== Received (${received}) or missing qty > 0. Generating complete missing units blurb.`);
+          const blurb = `Hello Team,
+
+-- Kindly find the below mentioned ASIN's missing from PO# : ${po}
+
+        ASIN	    Missing QTY	CP
+${asin}	                          ${missingQty}	              ${cp.toFixed(2)}  
+
+For ASIN: ${asin}
+Billed: ${billed}, Received: ${received}
+
+Kindly investigate the following invoices and ASINs for missing units:
+
+Invoice: ${invoiceNumber}
+ASIN: ${asin}
+
+Please check and help locate the missing units against the above invoices.`;
+
+          return {
+            status: 'Discrepancy (Missing Qty)',
+            logs,
+            billed,
+            received,
+            missingQty,
+            cp,
+            blurb
+          };
+        } else {
+          logs.push(`Billed (${billed}) === Received (${received}). Generating short blurb.`);
+          const blurb = `Hello Team,
 
 -- Kindly find the below mentioned ASIN's missing from PO# : ${po}
 
@@ -333,24 +442,108 @@ ${asin}	                          ${missingQty}	              ${cp.toFixed(2)}
 For ASIN: ${asin}
 Billed: ${billed}, Received: ${received}`;
 
-        if (billed !== received || missingQty > 0) {
-          logs.push(`Billed (${billed}) !== Received (${received}) or missing qty > 0. Generating complete missing units blurb.`);
-          blurb += `\n\nKindly investigate the following invoices and ASINs for missing units:\n\nInvoice: ${invoiceNumber}\nASIN: ${asin}\n\nPlease check and help locate the missing units against the above invoices.`;
-        } else {
-          logs.push(`Billed (${billed}) === Received (${received}). Generating short blurb.`);
+          return {
+            status: 'Matched (No Discrepancy)',
+            logs,
+            billed,
+            received,
+            missingQty,
+            cp,
+            blurb
+          };
         }
-
-        return {
-          status: (billed === received && missingQty === 0) ? 'Matched (No Discrepancy)' : 'Discrepancy (Missing Qty)',
-          logs,
-          billed,
-          received,
-          missingQty,
-          cp,
-          blurb
-        };
       } else {
         logs.push(`[WARNING] REBNI matched invoice "${rebni.matched_invoice_numbers}" does NOT match target Invoice "${invoiceNumber}".`);
+
+        const matchedQty = parseInt(rebni.quantity_matched, 10) || 0;
+        const isLoop = billed === matchedQty;
+
+        if (isLoop) {
+          const loopResult = runReconciliationLoop(invoiceNumber, asin, po, warehouseId, this.activeInvestigation);
+
+          if (loopResult.type === 'REBNI_AVAILABLE') {
+            const totalRebniAvail = loopResult.availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
+            logs.push(`✔ REBNI Available Inventory checked (Loop): Found ${loopResult.availableRebniRecords.length} records. Total available: ${totalRebniAvail}`);
+            
+            const detailsLines = loopResult.availableRebniRecords.map(r => {
+              const rPo = (r.po || '').trim();
+              const rAsin = (r.asin || '').trim();
+              const rShip = (r.shipment_id || '').trim();
+              const rCost = parseFloat(r.item_cost) || 0;
+              const rAvail = parseInt(r.rebni_available, 10) || 0;
+              return `${rPo} | ${rAsin} | ${rShip} | ${rCost.toFixed(2)} | ${rAvail}`;
+            }).join('\n\n');
+
+            const finalMissingQty = Math.max(0, loopResult.billed - loopResult.received);
+            const closingText = totalRebniAvail >= finalMissingQty
+              ? "Kindly utilize the available REBNI inventory and proceed with closing the PQV."
+              : "Kindly utilize the available REBNI inventory and provide with the updated PQV.";
+
+            const blurb = `Hi Team,
+
+REBNI inventory is available for the below ASIN${loopResult.availableRebniRecords.length > 1 ? 's' : ''}:
+
+Details for reference:
+
+${detailsLines}
+
+${closingText}
+
+Regards,`;
+
+            return {
+              status: 'REBNI Inventory Available',
+              logs,
+              billed,
+              received: 0,
+              missingQty: finalMissingQty,
+              cp: parseFloat(rebni.item_cost) || 0,
+              blurb,
+              availableRebniRecords: loopResult.availableRebniRecords
+            };
+          } else if (loopResult.type === 'DISCREPANCY') {
+            const loopDetailsText = loopResult.loopDetails.map(detail => {
+              return `Upon checking Invoice: ${detail.checkingInvoice}\n` +
+                `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}, Billed: ${detail.billed}, Received: ${detail.received}\n` +
+                `Matched: ${detail.matchedInvoicesList}`;
+            }).join('\n\n');
+
+            const finalMissingQty = Math.max(0, loopResult.billed - loopResult.received);
+            const finalCp = parseFloat(loopResult.rebniRecord ? loopResult.rebniRecord.item_cost : 0) || 0;
+
+            const blurb = `Hello Team,
+
+-- Kindly find the below mentioned ASIN's missing from PO# : ${po}
+
+        ASIN	   Missing QTY	CP
+${asin}	              ${finalMissingQty}	${finalCp.toFixed(2)}
+
+
+For ASIN: ${asin}
+Billed: ${billed}, Received: ${matchedQty}
+Matched: ${rebni.matched_invoice_numbers}
+
+${loopDetailsText}
+
+Kindly investigate the following invoices and ASINs for missing units:
+
+Invoice: ${loopResult.finalInvoice}
+ASIN: ${loopResult.finalAsin}
+
+Please check and help locate the missing units against the above invoices.`;
+
+            return {
+              status: 'Loop Discrepancy Found',
+              logs,
+              billed,
+              received: matchedQty,
+              missingQty: finalMissingQty,
+              cp: finalCp,
+              blurb,
+              loopResult
+            };
+          }
+        }
 
         if (manualMissingQty === null || manualMissingQty === undefined) {
           received = 0;
@@ -395,14 +588,98 @@ Please check and help locate the missing units against the above invoices.`;
       }
     } else if (cntMatched > 1) {
       logs.push(`[WARNING] ASIN matched to multiple invoices in REBNI (${rebni.matched_invoice_numbers}).`);
-      return {
-        status: 'Matched to Multiple',
-        logs,
-        billed,
-        received,
-        missingQty,
-        cp: cp || parseFloat(rebni.item_cost) || 0,
-        blurb: `Hello Team,
+
+      const matchedQty = parseInt(rebni.quantity_matched, 10) || 0;
+      const isLoop = billed === matchedQty;
+
+      if (isLoop) {
+        const loopResult = runReconciliationLoop(invoiceNumber, asin, po, warehouseId, this.activeInvestigation);
+
+        if (loopResult.type === 'REBNI_AVAILABLE') {
+          const totalRebniAvail = loopResult.availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
+          logs.push(`✔ REBNI Available Inventory checked (Loop): Found ${loopResult.availableRebniRecords.length} records. Total available: ${totalRebniAvail}`);
+          
+          const detailsLines = loopResult.availableRebniRecords.map(r => {
+            const rPo = (r.po || '').trim();
+            const rAsin = (r.asin || '').trim();
+            const rShip = (r.shipment_id || '').trim();
+            const rCost = parseFloat(r.item_cost) || 0;
+            const rAvail = parseInt(r.rebni_available, 10) || 0;
+            return `${rPo} | ${rAsin} | ${rShip} | ${rCost.toFixed(2)} | ${rAvail}`;
+          }).join('\n\n');
+
+          const finalMissingQty = Math.max(0, loopResult.billed - loopResult.received);
+          const closingText = totalRebniAvail >= finalMissingQty
+            ? "Kindly utilize the available REBNI inventory and proceed with closing the PQV."
+            : "Kindly utilize the available REBNI inventory and provide with the updated PQV.";
+
+          const blurb = `Hi Team,
+
+REBNI inventory is available for the below ASIN${loopResult.availableRebniRecords.length > 1 ? 's' : ''}:
+
+Details for reference:
+
+${detailsLines}
+
+${closingText}
+
+Regards,`;
+
+          return {
+            status: 'REBNI Inventory Available',
+            logs,
+            billed,
+            received: 0,
+            missingQty: finalMissingQty,
+            cp: parseFloat(rebni.item_cost) || 0,
+            blurb,
+            availableRebniRecords: loopResult.availableRebniRecords
+          };
+        } else if (loopResult.type === 'DISCREPANCY') {
+          const loopDetailsText = loopResult.loopDetails.map(detail => {
+            return `Upon checking Invoice: ${detail.checkingInvoice}\n` +
+              `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}, Billed: ${detail.billed}, Received: ${detail.received}\n` +
+              `Matched: ${detail.matchedInvoicesList}`;
+          }).join('\n\n');
+
+          const finalMissingQty = Math.max(0, loopResult.billed - loopResult.received);
+          const finalCp = parseFloat(loopResult.rebniRecord ? loopResult.rebniRecord.item_cost : 0) || 0;
+
+          const blurb = `Hello Team,
+
+-- Kindly find the below mentioned ASIN's missing from PO# : ${po}
+
+        ASIN	   Missing QTY	CP
+${asin}	              ${finalMissingQty}	${finalCp.toFixed(2)}
+
+
+For ASIN: ${asin}
+Billed: ${billed}, Received: ${matchedQty}
+Matched: ${rebni.matched_invoice_numbers}
+
+${loopDetailsText}
+
+Kindly investigate the following invoices and ASINs for missing units:
+
+Invoice: ${loopResult.finalInvoice}
+ASIN: ${loopResult.finalAsin}
+
+Please check and help locate the missing units against the above invoices.`;
+
+          return {
+            status: 'Loop Discrepancy Found',
+            logs,
+            billed,
+            received: matchedQty,
+            missingQty: finalMissingQty,
+            cp: finalCp,
+            blurb,
+            loopResult
+          };
+        }
+      }
+
+      const blurb = `Hello Team,
 
 ASIN: ${asin} under PO: ${po} is matched to multiple invoices ("${rebni.matched_invoice_numbers}").
 Kindly investigate the following target invoice for missing units:
@@ -410,7 +687,16 @@ Kindly investigate the following target invoice for missing units:
 Invoice: ${invoiceNumber}
 ASIN: ${asin}
 
-Regards.`
+Regards.`;
+
+      return {
+        status: 'Matched to Multiple',
+        logs,
+        billed,
+        received,
+        missingQty,
+        cp: cp || parseFloat(rebni.item_cost) || 0,
+        blurb
       };
     } else {
       logs.push(`[WARNING] REBNI indicates 0 invoice matches.`);
@@ -529,7 +815,7 @@ Regards.`
         resultBadge = 'Resolved - Fully Processed';
       } else if (result.status === 'Matched (No Discrepancy)') {
         resultBadge = 'Completed';
-      } else if (result.status.startsWith('Discrepancy') || result.status.includes('Mismatch') || result.status.includes('Multiple') || result.status.includes('0 Matches') || result.status.includes('REBNI')) {
+      } else if (result.status.startsWith('Discrepancy') || result.status.includes('Mismatch') || result.status.includes('Multiple') || result.status.includes('0 Matches') || result.status.includes('REBNI') || result.status.includes('Loop')) {
         resultBadge = 'Discrepancy Found';
       }
 
@@ -557,10 +843,11 @@ Regards.`
         missingQty: result.missingQty !== undefined ? result.missingQty : 0,
         cp: result.cp,
         result: resultBadge,
+        status: result.status,
         timeline: timelineMapped,
         generatedBlub: result.blurb,
         invoiceRecords: matchedInvoices,
-        rebniRecords: matchedRebnis
+        rebniRecords: result.availableRebniRecords || matchedRebnis
       });
     }
 
@@ -577,9 +864,20 @@ Regards.`
    * Format multiple rule results into a unified copy-paste blurb template
    */
   compileCombinedBlurb(asinResults, invoiceNumbers, pos) {
-    const interfacedList = asinResults.filter(r => r.result === 'Resolved - Fully Processed');
-    const discrepancyList = asinResults.filter(r => r.result === 'Discrepancy Found' || r.missingQty > 0);
-    const anomalyList = asinResults.filter(r => r.result === 'Discrepancy Found' && r.missingQty === 0);
+    const interfacedList = asinResults.filter(r => r.status === 'Interfaced/Matched');
+    const rebniList = asinResults.filter(r => r.status === 'REBNI Inventory Available');
+    const loopDiscrepancyList = asinResults.filter(r => r.status === 'Loop Discrepancy Found');
+    const discrepancyList = asinResults.filter(r => 
+      r.status !== 'Interfaced/Matched' && 
+      r.status !== 'REBNI Inventory Available' && 
+      r.status !== 'Loop Discrepancy Found' &&
+      (r.result === 'Discrepancy Found' || r.missingQty > 0)
+    );
+    const anomalyList = asinResults.filter(r => 
+      r.result === 'Discrepancy Found' && 
+      r.missingQty === 0 && 
+      r.status !== 'REBNI Inventory Available'
+    );
 
     const missingItems = discrepancyList.filter(item => item.missingQty > 0);
 
@@ -626,6 +924,67 @@ Regards.`
       blurb += `\nInvoice: ${invoiceNumbers.join(', ')}\n`;
     }
 
+    if (loopDiscrepancyList.length > 0) {
+      loopDiscrepancyList.forEach(item => {
+        if (blurb) {
+          blurb += `\n\n--------------------------------------------------\n`;
+        }
+        let itemBlurb = item.generatedBlub;
+        if (itemBlurb.endsWith('\n\nRegards.')) {
+          itemBlurb = itemBlurb.slice(0, -10);
+        } else if (itemBlurb.endsWith('\n\nRegards,')) {
+          itemBlurb = itemBlurb.slice(0, -10);
+        }
+        blurb += itemBlurb;
+      });
+    }
+
+    if (rebniList.length > 0) {
+      if (blurb) {
+        blurb += `\n\n--------------------------------------------------\n`;
+      } else {
+        blurb += `Hi Team,\n\n`;
+      }
+
+      if (!blurb.startsWith('Hi Team,\n\n') && !blurb.startsWith('Hello Team,\n\n')) {
+        blurb = `Hi Team,\n\n`;
+      }
+
+      blurb += `REBNI inventory is available for the below ASIN${rebniList.length > 1 ? 's' : ''}:\n\n`;
+      blurb += `Details for reference:\n\n`;
+
+      let allClosing = true;
+      const detailsList = [];
+      
+      rebniList.forEach(item => {
+        const availableRebniRecords = item.rebniRecords.filter(r => {
+          const availQty = parseInt(r.rebni_available, 10) || 0;
+          return availQty > 0;
+        });
+        const totalRebniAvail = availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
+        if (totalRebniAvail < item.missingQty) {
+          allClosing = false;
+        }
+
+        availableRebniRecords.forEach(r => {
+          const rPo = (r.po || '').trim();
+          const rAsin = (r.asin || '').trim();
+          const rShip = (r.shipment_id || '').trim();
+          const rCost = parseFloat(r.item_cost) || 0;
+          const rAvail = parseInt(r.rebni_available, 10) || 0;
+          detailsList.push(`${rPo} | ${rAsin} | ${rShip} | ${rCost.toFixed(2)} | ${rAvail}`);
+        });
+      });
+
+      blurb += detailsList.join('\n\n') + `\n\n`;
+
+      if (allClosing) {
+        blurb += `Kindly utilize the available REBNI inventory and proceed with closing the PQV.`;
+      } else {
+        blurb += `Kindly utilize the available REBNI inventory and provide with the updated PQV.`;
+      }
+    }
+
     if (interfacedList.length > 0) {
       if (blurb) {
         blurb += `\n\n--------------------------------------------------\n`;
@@ -642,7 +1001,13 @@ Regards.`
       blurb = `Hello Team,\n\nInvestigation completed for Invoice: ${invoiceNumbers.join(', ')}. All ASINs were evaluated successfully.\n`;
     }
 
-    blurb += `\n\nRegards.`;
+    if (rebniList.length > 0 && discrepancyList.length === 0 && loopDiscrepancyList.length === 0 && interfacedList.length === 0 && pureAnomalies.length === 0) {
+      blurb += `\n\nRegards,`;
+    } else {
+      if (!blurb.endsWith('\n\nRegards.') && !blurb.endsWith('Regards,')) {
+        blurb += `\n\nRegards.`;
+      }
+    }
     return blurb;
   }
 

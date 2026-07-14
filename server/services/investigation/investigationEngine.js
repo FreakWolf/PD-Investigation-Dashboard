@@ -66,6 +66,7 @@ class InvestigationEngine {
         invoiceNumber,
         warehouseId: warehouseId ? warehouseId.trim() : '',
         invoiceRecordsForAsin: records,
+        allInvoiceRecords: invoiceRecords,
         rebniRecords,
         timeline: asinTimeline,
         result: null,
