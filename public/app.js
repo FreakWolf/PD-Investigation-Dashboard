@@ -855,8 +855,8 @@ document.addEventListener('DOMContentLoaded', () => {
           engineInvoiceInput.value = row.invoiceNumber;
           engineAsinInput.value = row.asin;
           engineWarehouseInput.value = row.warehouseId || '';
-          engineMissingQtyInput.value = row.missingQty || '';
-          engineCpInput.value = row.cp ? String(row.cp) : '';
+          engineMissingQtyInput.value = '';
+          engineCpInput.value = '';
           enginePoInput.value = row.po || '';
           
           // Trigger form submit
