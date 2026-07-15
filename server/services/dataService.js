@@ -40,7 +40,7 @@ function resolvePathPlaceholders(p) {
   if (!p) return p;
   const username = os.userInfo().username;
   const userprofile = os.homedir();
-  
+
   let resolved = p;
   resolved = resolved.replace(/<Current-User>/gi, username);
   resolved = resolved.replace(/%USERNAME%/gi, username);
@@ -109,7 +109,7 @@ export async function getAvailableSellers() {
         .map(getBaseSellerName)
     );
     const invoiceSellers = Array.from(invoiceSellersSet).sort();
-      
+
     const rebniSellersSet = new Set(
       rebniFiles
         .filter(file => file.toLowerCase().endsWith('.txt'))
@@ -239,7 +239,7 @@ export function filterTsvByVendorCode(filePath, vendorCode, expectedColumns) {
     rl.on('close', () => {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`[CACHE MISS] ${path.basename(filePath)} for ${targetVendor} → ${matchedRecords.length} records in ${elapsed}s`);
-      
+
       // KEY MEMORY PROTECTION: Evict oldest cache entry if cache is growing to prevent Out of Memory
       if (queryCache.size >= 4) {
         const oldestKey = queryCache.keys().next().value;

@@ -358,14 +358,14 @@ Please check and help locate the missing units against the above invoices.`
                 return rDateStart >= startDateStart && rDateStart <= endDateStart;
               }
             }
-            
+
             return true;
           });
 
           if (availableRebniRecords.length > 0) {
             const totalRebniAvail = availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
             logs.push(`✔ REBNI Available Inventory checked: Found ${availableRebniRecords.length} records. Total available: ${totalRebniAvail}`);
-            
+
             const detailsLines = availableRebniRecords.map(r => {
               const rPo = (r.po || '').trim();
               const rAsin = (r.asin || '').trim();
@@ -464,7 +464,7 @@ Billed: ${billed}, Received: ${received}`;
           if (loopResult.type === 'REBNI_AVAILABLE') {
             const totalRebniAvail = loopResult.availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
             logs.push(`✔ REBNI Available Inventory checked (Loop): Found ${loopResult.availableRebniRecords.length} records. Total available: ${totalRebniAvail}`);
-            
+
             const detailsLines = loopResult.availableRebniRecords.map(r => {
               const rPo = (r.po || '').trim();
               const rAsin = (r.asin || '').trim();
@@ -503,9 +503,9 @@ Regards,`;
             };
           } else if (loopResult.type === 'DISCREPANCY') {
             const loopDetailsText = loopResult.loopDetails.map(detail => {
-              return `Upon checking Invoice: ${detail.checkingInvoice}\n` +
-                `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}, Billed: ${detail.billed}, Received: ${detail.received}\n` +
-                `Matched: ${detail.matchedInvoicesList}`;
+              return `Upon Checking Invoice: ${detail.checkingInvoice}\n` +
+                `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}\n` +
+                `Billed: ${detail.billed}, Received: ${detail.received}\n__`;
             }).join('\n\n');
 
             const finalMissingQty = Math.max(0, loopResult.billed - loopResult.received);
@@ -598,7 +598,7 @@ Please check and help locate the missing units against the above invoices.`;
         if (loopResult.type === 'REBNI_AVAILABLE') {
           const totalRebniAvail = loopResult.availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
           logs.push(`✔ REBNI Available Inventory checked (Loop): Found ${loopResult.availableRebniRecords.length} records. Total available: ${totalRebniAvail}`);
-          
+
           const detailsLines = loopResult.availableRebniRecords.map(r => {
             const rPo = (r.po || '').trim();
             const rAsin = (r.asin || '').trim();
@@ -637,9 +637,9 @@ Regards,`;
           };
         } else if (loopResult.type === 'DISCREPANCY') {
           const loopDetailsText = loopResult.loopDetails.map(detail => {
-            return `Upon checking Invoice: ${detail.checkingInvoice}\n` +
-              `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}, Billed: ${detail.billed}, Received: ${detail.received}\n` +
-              `Matched: ${detail.matchedInvoicesList}`;
+            return `Upon Checking Invoice: ${detail.checkingInvoice}\n` +
+              `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}\n` +
+              `Billed: ${detail.billed}, Received: ${detail.received}\n__`;
           }).join('\n\n');
 
           const finalMissingQty = Math.max(0, loopResult.billed - loopResult.received);
@@ -847,7 +847,8 @@ Regards.`
         timeline: timelineMapped,
         generatedBlub: result.blurb,
         invoiceRecords: matchedInvoices,
-        rebniRecords: result.availableRebniRecords || matchedRebnis
+        rebniRecords: result.availableRebniRecords || matchedRebnis,
+        loopResult: result.loopResult
       });
     }
 
@@ -866,16 +867,15 @@ Regards.`
   compileCombinedBlurb(asinResults, invoiceNumbers, pos) {
     const interfacedList = asinResults.filter(r => r.status === 'Interfaced/Matched');
     const rebniList = asinResults.filter(r => r.status === 'REBNI Inventory Available');
-    const loopDiscrepancyList = asinResults.filter(r => r.status === 'Loop Discrepancy Found');
-    const discrepancyList = asinResults.filter(r => 
-      r.status !== 'Interfaced/Matched' && 
-      r.status !== 'REBNI Inventory Available' && 
-      r.status !== 'Loop Discrepancy Found' &&
-      (r.result === 'Discrepancy Found' || r.missingQty > 0)
+    // Group loop discrepancies along with standard discrepancy items in the main table
+    const discrepancyList = asinResults.filter(r =>
+      r.status !== 'Interfaced/Matched' &&
+      r.status !== 'REBNI Inventory Available' &&
+      (r.status === 'Loop Discrepancy Found' || r.result === 'Discrepancy Found' || r.missingQty > 0)
     );
-    const anomalyList = asinResults.filter(r => 
-      r.result === 'Discrepancy Found' && 
-      r.missingQty === 0 && 
+    const anomalyList = asinResults.filter(r =>
+      r.result === 'Discrepancy Found' &&
+      r.missingQty === 0 &&
       r.status !== 'REBNI Inventory Available'
     );
 
@@ -889,23 +889,61 @@ Regards.`
 
       blurb += `Hello Team,\n\n`;
       blurb += `-- Kindly find the below mentioned ASIN's missing from PO# : ${displayPo}\n\n`;
-      blurb += `        ASIN	    Missing QTY	CP\n`;
+      blurb += `        ASIN	   Missing QTY	CP\n`;
 
       missingItems.forEach(item => {
-        const cpVal = item.cp !== undefined && item.cp !== null ? Number(item.cp).toFixed(2) : 'N/A';
-        blurb += `${item.asin.padEnd(12)}	                          ${item.missingQty}	              ${cpVal}  \n`;
+        let cpVal = item.cp !== undefined && item.cp !== null ? parseFloat(item.cp) : 'N/A';
+        if (typeof cpVal === 'number') {
+          cpVal = cpVal % 1 === 0 ? cpVal.toFixed(0) : cpVal.toFixed(2);
+        }
+        blurb += `${item.asin}	                    ${item.missingQty}	${cpVal}\n`;
       });
 
-      blurb += `\n`;
+      blurb += `\n\n`;
+
+      const cleanInvoicesList = (listStr) => {
+        if (!listStr) return '';
+        return listStr.split(/[\s,;]+/)
+          .map(inv => inv.trim().replace(/[a-zA-Z]+$/, ''))
+          .filter(Boolean)
+          .join(', ');
+      };
 
       missingItems.forEach(item => {
         blurb += `For ASIN: ${item.asin}\n`;
-        blurb += `Billed: ${item.billedQty}, Received: ${item.receivedQty}\n\n`;
+        if (item.status === 'Loop Discrepancy Found' && item.loopResult) {
+          const matchedInvStr = item.rebniRecords.length > 0 ? cleanInvoicesList(item.rebniRecords[0].matched_invoice_numbers) : '';
+          blurb += `Billed: ${item.billedQty}, Received: ${item.receivedQty}\n`;
+          blurb += `Matched: ${matchedInvStr}\n\n`;
+
+          item.loopResult.loopDetails.forEach(detail => {
+            blurb += `Upon Checking Invoice: ${detail.checkingInvoice}\n`;
+            blurb += `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}\n`;
+            blurb += `Billed: ${detail.billed}, Received: ${detail.received}\n`;
+            const cleanedChecking = (detail.checkingInvoice || '').trim().toLowerCase();
+            const cleanedMatched = (detail.matchedInvoicesList || '').trim().toLowerCase().split(/[\s,;]+/).map(s => s.trim());
+            const isOnlySelf = cleanedMatched.length === 1 && cleanedMatched[0] === cleanedChecking;
+            if (detail.matchedInvoicesList && !isOnlySelf) {
+              blurb += `Matched: ${detail.matchedInvoicesList}\n`;
+            }
+            blurb += `__\n\n`;
+          });
+        } else {
+          blurb += `Billed: ${item.billedQty}, Received: ${item.receivedQty}\n\n`;
+        }
       });
 
       blurb += `Kindly investigate the following invoices and ASINs for missing units:\n\n`;
-      blurb += `Invoice: ${invoiceNumbers.join(', ')}\n`;
-      blurb += `ASIN: ${missingItems.map(r => r.asin).join(', ')}\n\n`;
+      missingItems.forEach(item => {
+        let inv = item.invoiceNumber;
+        let as = item.asin;
+        if (item.status === 'Loop Discrepancy Found' && item.loopResult) {
+          inv = item.loopResult.finalInvoice;
+          as = item.loopResult.finalAsin;
+        }
+        blurb += `Invoice: ${inv}\n`;
+        blurb += `ASIN: ${as}\n\n`;
+      });
       blurb += `Please check and help locate the missing units against the above invoices.`;
     }
 
@@ -924,21 +962,6 @@ Regards.`
       blurb += `\nInvoice: ${invoiceNumbers.join(', ')}\n`;
     }
 
-    if (loopDiscrepancyList.length > 0) {
-      loopDiscrepancyList.forEach(item => {
-        if (blurb) {
-          blurb += `\n\n--------------------------------------------------\n`;
-        }
-        let itemBlurb = item.generatedBlub;
-        if (itemBlurb.endsWith('\n\nRegards.')) {
-          itemBlurb = itemBlurb.slice(0, -10);
-        } else if (itemBlurb.endsWith('\n\nRegards,')) {
-          itemBlurb = itemBlurb.slice(0, -10);
-        }
-        blurb += itemBlurb;
-      });
-    }
-
     if (rebniList.length > 0) {
       if (blurb) {
         blurb += `\n\n--------------------------------------------------\n`;
@@ -955,7 +978,7 @@ Regards.`
 
       let allClosing = true;
       const detailsList = [];
-      
+
       rebniList.forEach(item => {
         const availableRebniRecords = item.rebniRecords.filter(r => {
           const availQty = parseInt(r.rebni_available, 10) || 0;
@@ -1001,7 +1024,7 @@ Regards.`
       blurb = `Hello Team,\n\nInvestigation completed for Invoice: ${invoiceNumbers.join(', ')}. All ASINs were evaluated successfully.\n`;
     }
 
-    if (rebniList.length > 0 && discrepancyList.length === 0 && loopDiscrepancyList.length === 0 && interfacedList.length === 0 && pureAnomalies.length === 0) {
+    if (rebniList.length > 0 && discrepancyList.length === 0 && interfacedList.length === 0 && pureAnomalies.length === 0) {
       blurb += `\n\nRegards,`;
     } else {
       if (!blurb.endsWith('\n\nRegards.') && !blurb.endsWith('Regards,')) {

@@ -426,6 +426,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const PAGE_SIZE = 10;
 
+  function setupFilterAutocomplete(inputEl, datalistId, uniqueValues) {
+    if (!inputEl) return;
+    const updateSuggestions = () => {
+      const val = inputEl.value.trim().toLowerCase();
+      const filtered = val 
+        ? uniqueValues.filter(v => String(v).toLowerCase().includes(val))
+        : uniqueValues;
+      
+      const dl = document.getElementById(datalistId);
+      if (!dl) return;
+      dl.innerHTML = '';
+      const limit = Math.min(filtered.length, 10);
+      for (let i = 0; i < limit; i++) {
+        const v = filtered[i];
+        if (v !== undefined && v !== null && v !== '') {
+          const opt = document.createElement('option');
+          opt.value = v;
+          dl.appendChild(opt);
+        }
+      }
+    };
+    inputEl.addEventListener('input', updateSuggestions);
+    updateSuggestions();
+  }
+
   function initTable(type, rawData, headers) {
     const searchInput = document.getElementById(`${type}-search-input`);
     const actionPanel = document.getElementById(`${type}-table-actions`);
@@ -459,37 +484,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (startDateFilter) startDateFilter.value = '';
     if (endDateFilter) endDateFilter.value = '';
     actionPanel.classList.remove('hidden');
-    
-    // Datalist population helper
-    const populateDatalist = (id, values) => {
-      const dl = document.getElementById(id);
-      if (!dl) return;
-      dl.innerHTML = '';
-      values.forEach(v => {
-        if (v !== undefined && v !== null && v !== '') {
-          const opt = document.createElement('option');
-          opt.value = v;
-          dl.appendChild(opt);
-        }
-      });
-    };
 
     if (type === 'invoice') {
       const uniqueAsins = Array.from(new Set(rawData.map(r => r.asin))).sort();
       const uniqueInvoices = Array.from(new Set(rawData.map(r => r.invoice_number))).sort();
       const uniqueMatchedPos = Array.from(new Set(rawData.map(r => r.matched_po))).sort();
       const uniqueMatchedAsins = Array.from(new Set(rawData.map(r => r.matched_asin))).sort();
-      populateDatalist('invoice-asin-list', uniqueAsins);
-      populateDatalist('invoice-number-list', uniqueInvoices);
-      populateDatalist('invoice-matched-po-list', uniqueMatchedPos);
-      populateDatalist('invoice-matched-asin-list', uniqueMatchedAsins);
+      
+      setupFilterAutocomplete(asinFilter, 'invoice-asin-list', uniqueAsins);
+      setupFilterAutocomplete(numberFilter, 'invoice-number-list', uniqueInvoices);
+      setupFilterAutocomplete(matchedPoFilter, 'invoice-matched-po-list', uniqueMatchedPos);
+      setupFilterAutocomplete(matchedAsinFilter, 'invoice-matched-asin-list', uniqueMatchedAsins);
     } else if (type === 'rebni') {
       const uniqueAsins = Array.from(new Set(rawData.map(r => r.asin))).sort();
       const uniquePos = Array.from(new Set(rawData.map(r => r.po))).sort();
       const uniqueWarehouses = Array.from(new Set(rawData.map(r => r.warehouse_id))).sort();
-      populateDatalist('rebni-asin-list', uniqueAsins);
-      populateDatalist('rebni-po-list', uniquePos);
-      populateDatalist('rebni-warehouse-list', uniqueWarehouses);
+      
+      setupFilterAutocomplete(asinFilter, 'rebni-asin-list', uniqueAsins);
+      setupFilterAutocomplete(poFilter, 'rebni-po-list', uniquePos);
+      setupFilterAutocomplete(warehouseFilter, 'rebni-warehouse-list', uniqueWarehouses);
     }
     
     const applyFilters = () => {
@@ -707,19 +720,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const invoices = Array.from(new Set(rawData.map(row => row.invoiceNumber).filter(Boolean))).sort();
     const asins = Array.from(new Set(rawData.map(row => row.asin).filter(Boolean))).sort();
 
-    invoiceDatalist.innerHTML = '';
-    invoices.forEach(inv => {
-      const opt = document.createElement('option');
-      opt.value = inv;
-      invoiceDatalist.appendChild(opt);
-    });
-
-    asinDatalist.innerHTML = '';
-    asins.forEach(asin => {
-      const opt = document.createElement('option');
-      opt.value = asin;
-      asinDatalist.appendChild(opt);
-    });
+    setupFilterAutocomplete(invoiceFilterSelect, 'batch-invoice-list', invoices);
+    setupFilterAutocomplete(asinFilterSelect, 'batch-asin-list', asins);
     
     searchInput.value = '';
     invoiceFilterSelect.value = '';

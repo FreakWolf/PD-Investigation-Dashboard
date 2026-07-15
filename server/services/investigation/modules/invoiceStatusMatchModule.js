@@ -257,9 +257,17 @@ Regards,`;
             };
           } else if (loopResult.type === 'DISCREPANCY') {
             const loopDetailsText = loopResult.loopDetails.map(detail => {
-              return `Upon checking Invoice: ${detail.checkingInvoice}\n` +
-                `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}, Billed: ${detail.billed}, Received: ${detail.received}\n` +
-                `Matched: ${detail.matchedInvoicesList}`;
+              let text = `Upon Checking Invoice: ${detail.checkingInvoice}\n` +
+                `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}\n` +
+                `Billed: ${detail.billed}, Received: ${detail.received}\n`;
+              const cleanedChecking = (detail.checkingInvoice || '').trim().toLowerCase();
+              const cleanedMatched = (detail.matchedInvoicesList || '').trim().toLowerCase().split(/[\s,;]+/).map(s => s.trim());
+              const isOnlySelf = cleanedMatched.length === 1 && cleanedMatched[0] === cleanedChecking;
+              if (detail.matchedInvoicesList && !isOnlySelf) {
+                text += `Matched: ${detail.matchedInvoicesList}\n`;
+              }
+              text += `__`;
+              return text;
             }).join('\n\n');
 
             const finalMissingQty = Math.max(0, loopResult.billed - loopResult.received);
@@ -364,10 +372,18 @@ Regards,`;
           };
         } else if (loopResult.type === 'DISCREPANCY') {
           const loopDetailsText = loopResult.loopDetails.map(detail => {
-            return `Upon checking Invoice: ${detail.checkingInvoice}\n` +
-              `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}, Billed: ${detail.billed}, Received: ${detail.received}\n` +
-              `Matched: ${detail.matchedInvoicesList}`;
-          }).join('\n\n');
+              let text = `Upon Checking Invoice: ${detail.checkingInvoice}\n` +
+                `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}\n` +
+                `Billed: ${detail.billed}, Received: ${detail.received}\n`;
+              const cleanedChecking = (detail.checkingInvoice || '').trim().toLowerCase();
+              const cleanedMatched = (detail.matchedInvoicesList || '').trim().toLowerCase().split(/[\s,;]+/).map(s => s.trim());
+              const isOnlySelf = cleanedMatched.length === 1 && cleanedMatched[0] === cleanedChecking;
+              if (detail.matchedInvoicesList && !isOnlySelf) {
+                text += `Matched: ${detail.matchedInvoicesList}\n`;
+              }
+              text += `__`;
+              return text;
+            }).join('\n\n');
 
           const finalMissingQty = Math.max(0, loopResult.billed - loopResult.received);
           const finalCp = parseFloat(loopResult.rebniRecord ? loopResult.rebniRecord.item_cost : 0) || 0;

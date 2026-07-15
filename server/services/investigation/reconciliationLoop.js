@@ -101,7 +101,7 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
       });
     }
 
-    if (billed !== received) {
+    if (currentInvoice.trim().toLowerCase() !== startInvoice.trim().toLowerCase() && billed !== received) {
       return {
         type: 'DISCREPANCY',
         billed,
@@ -124,17 +124,17 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
       break; 
     }
 
-    // Filter invoice records for this shipment ID and matched ASIN
+    // Filter invoice records: match if shipmentId or matched_asin is in comma-separated lists
     const shipmentInvoices = activeInvestigation.invoiceRecords.filter(r => {
-      const shipMatch = (r.shipment_id || '').trim().toUpperCase() === shipmentId.trim().toUpperCase();
-      const matchedAsinMatch = (r.matched_asin || '').trim().toUpperCase() === currentAsin.toUpperCase();
+      const shipMatch = (r.shipment_id || '').trim().toUpperCase().split(/[\s,;]+/).includes(shipmentId.trim().toUpperCase());
+      const matchedAsinMatch = (r.matched_asin || '').trim().toUpperCase().split(/[\s,;]+/).includes(currentAsin.toUpperCase());
       return shipMatch && matchedAsinMatch;
     });
 
     // Deduplicate legs
     const uniqueLegsMap = new Map();
     shipmentInvoices.forEach(row => {
-      const invNum = (row.invoice_number || '').trim();
+      const invNum = (row.invoice_number || '').trim().replace(/[a-zA-Z]+$/, '');
       const pId = (row.purchase_order_id || row.matched_po || '').trim();
       const asCode = (row.asin || '').trim();
       if (!invNum || !pId || !asCode) return;
@@ -146,7 +146,7 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
 
     let nextLeg = null;
     for (const [key, row] of uniqueLegsMap.entries()) {
-      const invNum = (row.invoice_number || '').trim();
+      const invNum = (row.invoice_number || '').trim().replace(/[a-zA-Z]+$/, '');
       const pId = (row.purchase_order_id || row.matched_po || '').trim();
       const asCode = (row.asin || '').trim();
       
@@ -157,7 +157,7 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
         invoiceNumber: invNum,
         po: pId,
         asin: asCode,
-        shipmentwiseMatchedQty: parseInt(row.shipmentwise_matched_qty) || 0
+        shipmentwiseMatchedQty: getShipmentwiseMatchedQty(row, currentPo, currentAsin)
       };
       break; 
     }
@@ -195,7 +195,14 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
       });
     }
 
-    const nextMatchedInvsList = nextMatchedRebnis.length > 0 ? (nextMatchedRebnis[0].matched_invoice_numbers || '') : nextLeg.invoiceNumber;
+    const cleanInvoicesList = (listStr) => {
+      if (!listStr) return '';
+      return listStr.split(/[\s,;]+/)
+        .map(inv => inv.trim().replace(/[a-zA-Z]+$/, ''))
+        .filter(Boolean)
+        .join(', ');
+    };
+    const nextMatchedInvsList = nextMatchedRebnis.length > 0 ? cleanInvoicesList(nextMatchedRebnis[0].matched_invoice_numbers) : '';
 
     loopDetails.push({
       checkingInvoice: nextLeg.invoiceNumber,
@@ -216,4 +223,22 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
     type: 'PAUSED',
     loopDetails
   };
+}
+
+/**
+ * Extracts the matched quantity corresponding to target PO and ASIN inside comma-separated lists.
+ */
+function getShipmentwiseMatchedQty(row, targetPo, targetAsin) {
+  const pos = (row.matched_po || '').trim().split(/[\s,;]+/);
+  const asins = (row.matched_asin || '').trim().split(/[\s,;]+/);
+  const qtys = (row.shipmentwise_matched_qty || '').trim().split(/[\s,;]+/);
+  
+  for (let i = 0; i < pos.length; i++) {
+    if (pos[i] && asins[i] && qtys[i] && 
+        pos[i].trim().toUpperCase() === targetPo.trim().toUpperCase() && 
+        asins[i].trim().toUpperCase() === targetAsin.trim().toUpperCase()) {
+      return parseInt(qtys[i], 10) || 0;
+    }
+  }
+  return parseInt(row.shipmentwise_matched_qty, 10) || 0;
 }
