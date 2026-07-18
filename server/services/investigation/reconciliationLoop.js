@@ -1,12 +1,14 @@
 /**
  * shipment-based reconciliation loop engine to resolve loop matches across invoices.
  */
-export function runReconciliationLoop(startInvoice, startAsin, startPo, startWarehouse, activeInvestigation) {
+export function runReconciliationLoop(startInvoice, startAsin, startPo, startWarehouse, originalMissingQty, activeInvestigation) {
   let currentInvoice = startInvoice;
   let currentAsin = startAsin;
   let currentPo = startPo;
   const visited = new Set();
   const loopDetails = [];
+  let accumulatedMissing = 0;
+  const culpritInvoices = [];
   
   let currentInvoiceDate = null;
 
@@ -77,7 +79,6 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
     // Look up matching REBNI records
     const matchedRebnis = activeInvestigation.rebniRecords.filter(r => 
       (r.asin || '').trim().toUpperCase() === currentAsin.toUpperCase() &&
-      (startWarehouse ? (r.warehouse_id || '').trim().toLowerCase() === startWarehouse.toLowerCase() : true) &&
       (r.po || '').trim().toUpperCase() === currentPo.toUpperCase()
     );
 
@@ -102,16 +103,25 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
     }
 
     if (currentInvoice.trim().toLowerCase() !== startInvoice.trim().toLowerCase() && billed !== received) {
-      return {
-        type: 'DISCREPANCY',
-        billed,
-        received,
-        loopDetails,
-        finalInvoice: currentInvoice,
-        finalAsin: currentAsin,
-        finalPo: currentPo,
+      const hopMissing = Math.max(0, billed - received);
+      accumulatedMissing += hopMissing;
+      
+      culpritInvoices.push({
+        invoice: currentInvoice,
+        asin: currentAsin,
+        po: currentPo,
+        missing: hopMissing,
         rebniRecord
-      };
+      });
+
+      if (accumulatedMissing >= originalMissingQty) {
+        return {
+          type: 'DISCREPANCY',
+          loopDetails,
+          culpritInvoices,
+          accumulatedMissing
+        };
+      }
     }
 
     // If billed === received, we transition to the next leg
@@ -176,7 +186,6 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
 
     const nextMatchedRebnis = activeInvestigation.rebniRecords.filter(r => 
       (r.asin || '').trim().toUpperCase() === nextLeg.asin.toUpperCase() &&
-      (startWarehouse ? (r.warehouse_id || '').trim().toLowerCase() === startWarehouse.toLowerCase() : true) &&
       (r.po || '').trim().toUpperCase() === nextLeg.po.toUpperCase()
     );
 
@@ -217,6 +226,15 @@ export function runReconciliationLoop(startInvoice, startAsin, startPo, startWar
     currentInvoice = nextLeg.invoiceNumber;
     currentPo = nextLeg.po;
     currentAsin = nextLeg.asin;
+  }
+
+  if (culpritInvoices.length > 0) {
+    return {
+      type: 'DISCREPANCY',
+      loopDetails,
+      culpritInvoices,
+      accumulatedMissing
+    };
   }
 
   return {

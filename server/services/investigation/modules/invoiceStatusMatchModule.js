@@ -42,6 +42,8 @@ Regards.`;
       };
     }
 
+    let globalReceivedQty = Math.max(0, ...invoiceRecordsForAsin.map(r => parseInt(r.quantity_matched, 10) || 0));
+
     // Step 5: Check if ANY contains ON_HOLD
     const hasOnHold = invoiceRecordsForAsin.some(r => {
       const status = (r.invoice_item_status || '').trim().toUpperCase();
@@ -50,15 +52,13 @@ Regards.`;
     if (hasOnHold) {
       logs.push('✔ ON_HOLD found. Checking for available REBNI inventory first.');
       // For ON_HOLD, billed = quantity_invoiced, received = quantity_matched (partial matches already done)
-      // missing = billed - received
+      // missing = ON_HOLD row's quantity_invoiced
       const onHoldRecords = invoiceRecordsForAsin.filter(r => (r.invoice_item_status || '').trim().toUpperCase() === 'ON_HOLD');
-      const onHoldBilled = Math.max(0, ...onHoldRecords.map(r => parseInt(r.quantity_invoiced, 10) || 0));
-      const onHoldReceived = Math.max(0, ...onHoldRecords.map(r => parseInt(r.quantity_matched, 10) || 0));
-      const onHoldQty = Math.max(0, onHoldBilled - onHoldReceived);
+      const onHoldQty = Math.max(0, ...onHoldRecords.map(r => parseInt(r.quantity_invoiced, 10) || 0));
       const cp = parseFloat(rebniRecords.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase())?.item_cost || 0);
-      // Override billedQty to be accurate from the ON_HOLD record
-      const effectiveBilledQty = onHoldBilled;
-      const effectiveReceivedQty = onHoldReceived;
+      // Override billedQty to be accurate from the overall invoice
+      const effectiveBilledQty = billedQty;
+      const effectiveReceivedQty = globalReceivedQty;
       logs.push(`🔹 ON_HOLD details: Billed=${effectiveBilledQty}, Matched=${effectiveReceivedQty}, Missing=${onHoldQty}`);
 
       // Derive effective warehouse — use user input if provided, else derive from rebniRecords matched to this PO/ASIN
@@ -158,7 +158,7 @@ Regards,`;
 
       if (matchedRebniForHold && parseInt(matchedRebniForHold.cnt_invoice_matched, 10) > 1) {
         logs.push(`✔ ON_HOLD invoice has cnt_invoice_matched > 1 (${matchedRebniForHold.cnt_invoice_matched}). Running loop check.`);
-        const loopResult = runReconciliationLoop(invoiceNumber, asin, invoicePo2, effectiveWarehouse, { invoiceRecords: invoiceRecordsForAsin, rebniRecords });
+        const loopResult = runReconciliationLoop(invoiceNumber, asin, invoicePo2, effectiveWarehouse, onHoldQty, { invoiceRecords: invoiceRecordsForAsin, rebniRecords });
         
         if (loopResult.type === 'DISCREPANCY') {
           const loopDetailsText = loopResult.loopDetails.map(detail => {
@@ -167,17 +167,16 @@ Regards,`;
               `Billed: ${detail.billed}, Received: ${detail.received}\n__`;
           }).join('\n\n');
 
-          const totalLoopBilled = effectiveBilledQty + loopResult.loopDetails.reduce((sum, d) => sum + (parseInt(d.billed) || 0), 0);
-          const maxLoopReceived = Math.max(parseInt(matchedRebniForHold.quantity_matched) || 0, ...loopResult.loopDetails.map(d => parseInt(d.received) || 0));
-          const finalMissingQty = Math.max(0, totalLoopBilled - maxLoopReceived);
           const finalCp = parseFloat(loopResult.rebniRecord ? loopResult.rebniRecord.item_cost : 0) || cp;
+
+          const culpritText = loopResult.culpritInvoices.map(c => `Invoice: ${c.invoice}\nASIN: ${c.asin}`).join('\n\n');
 
           const blurb = `Hello Team,
 
 -- Kindly find the below mentioned ASIN's missing from PO# : ${invoicePo2}
 
         ASIN	   Missing QTY	CP
-${asin}	              ${finalMissingQty}	${finalCp.toFixed(2)}
+${asin}	              ${onHoldQty}	${finalCp.toFixed(2)}
 
 
 For ASIN: ${asin}
@@ -188,15 +187,14 @@ ${loopDetailsText}
 
 Kindly investigate the following invoices and ASINs for missing units:
 
-Invoice: ${loopResult.finalInvoice}
-ASIN: ${loopResult.finalAsin}
+${culpritText}
 
 Please check and help locate the missing units against the above invoices.`;
 
           return {
             result: 'Loop Discrepancy Found',
             status: 'Loop Discrepancy Found',
-            findings: { billedQty: effectiveBilledQty, receivedQty: effectiveReceivedQty, missingQty: finalMissingQty, cp: finalCp },
+            findings: { billedQty: effectiveBilledQty, receivedQty: effectiveReceivedQty, missingQty: onHoldQty, cp: finalCp },
             generatedBlub: blurb,
             logs
           };

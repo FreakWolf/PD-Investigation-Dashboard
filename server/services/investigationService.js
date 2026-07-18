@@ -248,6 +248,10 @@ Regards.`;
       logs.push(`Using manual Cost Price override: ${cp.toFixed(2)}.`);
     }
 
+    if (manualMissingQty === null || manualMissingQty === undefined) {
+      received = Math.max(0, ...matchedInvoices.map(r => parseInt(r.quantity_matched, 10) || 0));
+    }
+
     const hasOnHold = matchedInvoices.some(r => {
       const status = (r.invoice_item_status || '').trim().toUpperCase();
       return status === 'ON_HOLD';
@@ -256,11 +260,9 @@ Regards.`;
     if (hasOnHold && !isManualDiscrepancyForce) {
       logs.push('✔ ON_HOLD found. Checking for available REBNI inventory first.');
       const onHoldRecords = matchedInvoices.filter(r => (r.invoice_item_status || '').trim().toUpperCase() === 'ON_HOLD');
-      const onHoldBilled = Math.max(0, ...onHoldRecords.map(r => parseInt(r.quantity_invoiced, 10) || 0));
-      const onHoldReceived = Math.max(0, ...onHoldRecords.map(r => parseInt(r.quantity_matched, 10) || 0));
-      const onHoldQty = Math.max(0, onHoldBilled - onHoldReceived);
+      const onHoldQty = Math.max(0, ...onHoldRecords.map(r => parseInt(r.quantity_invoiced, 10) || 0));
       const cpVal = cp !== null ? cp : parseFloat(matchedRebnis.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase())?.item_cost || 0);
-      logs.push(`🔹 ON_HOLD details: Billed=${onHoldBilled}, Matched/Received=${onHoldReceived}, Missing=${onHoldQty}`);
+      logs.push(`🔹 ON_HOLD details: Billed=${billed}, Matched/Received=${received}, Missing=${onHoldQty}`);
 
       // Derive effective warehouse — use user input if provided, else derive from matched REBNI for this PO
       const effectiveWarehouse = warehouseId
@@ -336,8 +338,8 @@ Regards,`;
         return {
           status: 'REBNI Inventory Available',
           logs,
-          billed: onHoldBilled,
-          received: onHoldReceived,
+          billed,
+          received,
           missingQty: onHoldQty,
           cp: cpVal,
           blurb,
@@ -357,7 +359,7 @@ Regards,`;
 
       if (matchedRebniForHold && parseInt(matchedRebniForHold.cnt_invoice_matched, 10) > 1) {
         logs.push(`✔ ON_HOLD invoice has cnt_invoice_matched > 1 (${matchedRebniForHold.cnt_invoice_matched}). Running loop check.`);
-        const loopResult = runReconciliationLoop(invoiceNumber, asin, po, effectiveWarehouse, this.activeInvestigation);
+        const loopResult = runReconciliationLoop(invoiceNumber, asin, po, effectiveWarehouse, onHoldQty, this.activeInvestigation);
         
         if (loopResult.type === 'DISCREPANCY') {
           const loopDetailsText = loopResult.loopDetails.map(detail => {
@@ -366,38 +368,36 @@ Regards,`;
               `Billed: ${detail.billed}, Received: ${detail.received}\n__`;
           }).join('\n\n');
 
-          const totalLoopBilled = onHoldBilled + loopResult.loopDetails.reduce((sum, d) => sum + (parseInt(d.billed) || 0), 0);
-          const maxLoopReceived = Math.max(parseInt(matchedRebniForHold.quantity_matched) || 0, ...loopResult.loopDetails.map(d => parseInt(d.received) || 0));
-          const finalMissingQty = Math.max(0, totalLoopBilled - maxLoopReceived);
           const finalCp = parseFloat(loopResult.rebniRecord ? loopResult.rebniRecord.item_cost : 0) || cpVal;
+
+          const culpritText = loopResult.culpritInvoices.map(c => `Invoice: ${c.invoice}\nASIN: ${c.asin}`).join('\n\n');
 
           const blurb = `Hello Team,
 
 -- Kindly find the below mentioned ASIN's missing from PO# : ${po}
 
         ASIN	   Missing QTY	CP
-${asin}	              ${finalMissingQty}	${finalCp.toFixed(2)}
+${asin}	              ${onHoldQty}	${finalCp.toFixed(2)}
 
 
 For ASIN: ${asin}
-Billed: ${onHoldBilled}, Received: ${onHoldReceived}
+Billed: ${billed}, Received: ${received}
 Matched: ${matchedRebniForHold.matched_invoice_numbers}
 
 ${loopDetailsText}
 
 Kindly investigate the following invoices and ASINs for missing units:
 
-Invoice: ${loopResult.finalInvoice}
-ASIN: ${loopResult.finalAsin}
+${culpritText}
 
 Please check and help locate the missing units against the above invoices.`;
 
           return {
             status: 'Loop Discrepancy Found',
             logs,
-            billed: onHoldBilled,
-            received: onHoldReceived,
-            missingQty: finalMissingQty,
+            billed,
+            received,
+            missingQty: onHoldQty,
             cp: finalCp,
             blurb,
             loopResult
@@ -414,7 +414,7 @@ ${asin}	                    ${onHoldQty}	${cpVal % 1 === 0 ? cpVal.toFixed(0) : 
 
 
 For ASIN: ${asin}
-Billed: ${onHoldBilled}, Received: ${onHoldReceived}
+Billed: ${billed}, Received: ${received}
 
 Kindly investigate the following invoices and ASINs for missing units:
 
@@ -426,8 +426,8 @@ Please check and help locate the missing units against the above invoices.`;
       return {
         status: 'Discrepancy (On Hold)',
         logs,
-        billed: onHoldBilled,
-        received: onHoldReceived,
+        billed,
+        received,
         missingQty: onHoldQty,
         cp: cpVal,
         blurb
@@ -647,7 +647,7 @@ Billed: ${billed}, Received: ${received}`;
         if (isLoop) {
           // Pass effectiveWarehouse (if we derived it) or derive it here!
           const effectiveWhForLoop = warehouseId ? warehouseId.trim().toUpperCase() : (rebni.warehouse_id || '').trim().toUpperCase();
-          const loopResult = runReconciliationLoop(invoiceNumber, asin, po, effectiveWhForLoop, this.activeInvestigation);
+          const loopResult = runReconciliationLoop(invoiceNumber, asin, po, effectiveWhForLoop, missingQty, this.activeInvestigation);
 
           if (loopResult.type === 'REBNI_AVAILABLE') {
             const totalRebniAvail = loopResult.availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
@@ -783,7 +783,7 @@ Please check and help locate the missing units against the above invoices.`;
       const isLoop = billed === matchedQty;
 
       if (isLoop) {
-        const loopResult = runReconciliationLoop(invoiceNumber, asin, po, warehouseId, this.activeInvestigation);
+        const loopResult = runReconciliationLoop(invoiceNumber, asin, po, warehouseId, missingQty, this.activeInvestigation);
 
         if (loopResult.type === 'REBNI_AVAILABLE') {
           const totalRebniAvail = loopResult.availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
@@ -1002,6 +1002,13 @@ Regards.`
         ? (matchedInvoices[0].invoice_number || '').trim() || invoiceNumbers[0]
         : invoiceNumbers[0];
 
+      if (manualCp === null || manualCp === undefined) {
+        const globalRebniForAsin = this.activeInvestigation.rebniRecords.find(r => (r.asin || '').trim().toUpperCase() === currentAsin.toUpperCase() && parseFloat(r.item_cost) > 0);
+        if (globalRebniForAsin) {
+          manualCp = parseFloat(globalRebniForAsin.item_cost);
+        }
+      }
+
       const result = this.runRulesInternal(
         effectiveInvoiceNumber,
         currentAsin,
@@ -1139,17 +1146,23 @@ Regards.`
       blurb += `Kindly investigate the following invoices and ASINs for missing units:\n\n`;
       const groupedByInvoice = {};
       missingItems.forEach(item => {
-        let inv = item.invoiceNumber;
-        let as = item.asin;
-        if (item.status === 'Loop Discrepancy Found' && item.loopResult) {
-          inv = item.loopResult.finalInvoice;
-          as = item.loopResult.finalAsin;
+        if (item.status === 'Loop Discrepancy Found' && item.loopResult && item.loopResult.culpritInvoices) {
+          item.loopResult.culpritInvoices.forEach(c => {
+            const cleanInv = cleanInvoicesList(c.invoice) || c.invoice;
+            if (!groupedByInvoice[cleanInv]) {
+              groupedByInvoice[cleanInv] = [];
+            }
+            groupedByInvoice[cleanInv].push(c.asin);
+          });
+        } else {
+          let inv = item.invoiceNumber;
+          let as = item.asin;
+          const cleanInv = cleanInvoicesList(inv) || inv;
+          if (!groupedByInvoice[cleanInv]) {
+            groupedByInvoice[cleanInv] = [];
+          }
+          groupedByInvoice[cleanInv].push(as);
         }
-        const cleanInv = cleanInvoicesList(inv) || inv;
-        if (!groupedByInvoice[cleanInv]) {
-          groupedByInvoice[cleanInv] = [];
-        }
-        groupedByInvoice[cleanInv].push(as);
       });
 
       Object.keys(groupedByInvoice).forEach(inv => {
