@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PD Investigation Dashboard - Automated Invoice & REBNI Investigation System</title>
   <meta name="description" content="Professional automated invoice and REBNI investigation dashboard. Built for Rohit Singh.">
-  <!-- Google Fonts: Inter -->
+  <!-- Google Fonts: Inter + JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Stylesheet -->
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -168,7 +168,7 @@
           </div>
         </section>
 
-        <!-- Right: Summary Metrics -->
+        <!-- Right: Summary Metrics + Investigation Results (embedded) -->
         <section class="card summary-card" aria-labelledby="summary-title">
           <div class="card-header">
             <div class="header-icon">
@@ -185,85 +185,114 @@
               <p>Configure investigation setup and click <strong>Start Investigation</strong> to view statistics.</p>
             </div>
           </div>
+
+          <!-- Inline Investigation Results (shown after Run Audit) -->
+          <div id="inline-results-container" class="hidden">
+            <div class="inline-results-grid">
+              <!-- Left: ASIN Tabs -->
+              <div class="inline-asin-panel">
+                <h3 class="inline-panel-title">Investigated ASINs</h3>
+                <div class="asin-tabs-container" id="asin-tabs-list">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+              <!-- Right: Detail -->
+              <div class="inline-detail-panel">
+                <div class="inline-detail-header">
+                  <h3 class="inline-panel-title">Investigation Details</h3>
+                  <div id="asin-result-badge" class="result-badge">Resolved</div>
+                </div>
+
+                <!-- Metadata -->
+                <div class="details-metadata-section">
+                  <div class="metadata-row">
+                    <span class="meta-label">Invoice Number</span>
+                    <span class="meta-value" id="card-invoice-number">-</span>
+                  </div>
+                  <div class="metadata-row">
+                    <span class="meta-label">ASIN</span>
+                    <span class="meta-value" id="card-asin">-</span>
+                  </div>
+                  <div class="metadata-row">
+                    <span class="meta-label">PO Number</span>
+                    <span class="meta-value" id="card-po">-</span>
+                  </div>
+                  <div class="metadata-row">
+                    <span class="meta-label">Warehouse ID</span>
+                    <span class="meta-value" id="card-warehouse">-</span>
+                  </div>
+                  <div class="metadata-row">
+                    <span class="meta-label">Invoice Status</span>
+                    <span class="meta-value" id="card-status">-</span>
+                  </div>
+                </div>
+
+                <!-- Metrics -->
+                <div class="metrics-highlight-row">
+                  <div class="highlight-metric-card billed">
+                    <span class="metric-icon">📦</span>
+                    <div class="metric-info">
+                      <span class="metric-label">Billed Qty</span>
+                      <span class="metric-value" id="card-billed-qty">-</span>
+                    </div>
+                  </div>
+                  <div class="highlight-metric-card received">
+                    <span class="metric-icon">✔</span>
+                    <div class="metric-info">
+                      <span class="metric-label">Received Qty</span>
+                      <span class="metric-value" id="card-received-qty">-</span>
+                    </div>
+                  </div>
+                  <div class="highlight-metric-card missing">
+                    <span class="metric-icon">⚠️</span>
+                    <div class="metric-info">
+                      <span class="metric-label">Missing Qty</span>
+                      <span class="metric-value" id="card-missing-qty">-</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Timeline + Blurb -->
+                <div class="results-inner-grid">
+                  <div class="results-timeline-panel">
+                    <h3>Investigation Timeline</h3>
+                    <div class="timeline-checklist" id="card-timeline-list"></div>
+                  </div>
+                  <div class="results-blub-panel">
+                    <div class="blub-header">
+                      <h3>Generated Blurb / Internal Note</h3>
+                      <button id="copy-blub-btn" class="secondary-btn btn-sm copy-btn">
+                        <span class="btn-text">Copy</span>
+                      </button>
+                    </div>
+                    <div class="blub-container">
+                      <pre id="card-blub-content">-</pre>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Filtered Source Tables -->
+                <div class="results-tables-section">
+                  <hr class="section-divider">
+                  <h3 class="section-subtitle">Filtered Source Data</h3>
+                  <div class="results-tables-grid">
+                    <div class="source-table-wrapper">
+                      <h4>Filtered Invoice Records</h4>
+                      <div class="table-container mini-table" id="card-invoice-table-container"></div>
+                    </div>
+                    <div class="source-table-wrapper">
+                      <h4>Filtered REBNI Records</h4>
+                      <div class="table-container mini-table" id="card-rebni-table-container"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
       </div>
 
-      <!-- Middle Grid: Main Data Tables -->
-      <div class="dashboard-grid middle-grid">
-        <!-- Invoice Analysis Table Card -->
-        <section class="card data-table-card" id="invoice-analysis-section" aria-labelledby="invoice-table-title">
-          <div class="card-header table-card-header">
-            <div class="header-left">
-              <div class="header-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-              </div>
-              <h2 id="invoice-table-title">Invoice Analysis</h2>
-            </div>
-            <div class="header-actions table-actions hidden" id="invoice-table-actions">
-              <input type="text" id="invoice-asin-filter" class="search-input filter-input" placeholder="Filter ASIN..." list="invoice-asin-list" aria-label="Filter by ASIN">
-              <datalist id="invoice-asin-list"></datalist>
-              <input type="text" id="invoice-number-filter" class="search-input filter-input" placeholder="Filter Invoice..." list="invoice-number-list" aria-label="Filter by Invoice">
-              <datalist id="invoice-number-list"></datalist>
-              <input type="text" id="invoice-matched-po-filter" class="search-input filter-input" placeholder="Filter Matched PO..." list="invoice-matched-po-list" aria-label="Filter by Matched PO">
-              <datalist id="invoice-matched-po-list"></datalist>
-              <input type="text" id="invoice-matched-asin-filter" class="search-input filter-input" placeholder="Filter Matched ASIN..." list="invoice-matched-asin-list" aria-label="Filter by Matched ASIN">
-              <datalist id="invoice-matched-asin-list"></datalist>
-              <input type="text" id="invoice-search-input" class="search-input" placeholder="Search Invoices...">
-              <button id="invoice-download-btn" class="secondary-btn btn-sm" title="Download CSV">
-                <span class="btn-text">📥 Download CSV</span>
-              </button>
-            </div>
-          </div>
-          
-          <div class="table-container" id="invoice-table-container">
-            <div class="empty-state">
-              <p>Invoice data will be displayed here after running the investigation.</p>
-            </div>
-          </div>
-          
-          <div class="table-pagination-container hidden" id="invoice-pagination">
-            <!-- Rendered dynamically -->
-          </div>
-        </section>
-
-        <!-- REBNI Analysis Table Card -->
-        <section class="card data-table-card" id="rebni-analysis-section" aria-labelledby="rebni-table-title">
-          <div class="card-header table-card-header">
-            <div class="header-left">
-              <div class="header-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-              </div>
-              <h2 id="rebni-table-title">REBNI Analysis</h2>
-            </div>
-            <div class="header-actions table-actions hidden" id="rebni-table-actions">
-              <input type="text" id="rebni-asin-filter" class="search-input filter-input" placeholder="Filter ASIN..." list="rebni-asin-list" aria-label="Filter by ASIN">
-              <datalist id="rebni-asin-list"></datalist>
-              <input type="text" id="rebni-po-filter" class="search-input filter-input" placeholder="Filter PO..." list="rebni-po-list" aria-label="Filter by PO">
-              <datalist id="rebni-po-list"></datalist>
-              <input type="text" id="rebni-warehouse-filter" class="search-input filter-input" placeholder="Filter Warehouse..." list="rebni-warehouse-list" aria-label="Filter by Warehouse">
-              <datalist id="rebni-warehouse-list"></datalist>
-              <input type="text" id="rebni-start-date-filter" class="search-input filter-input" placeholder="Start Date (YYYY-MM-DD)" aria-label="Start Date" title="Start Date (YYYY-MM-DD)">
-              <input type="text" id="rebni-end-date-filter" class="search-input filter-input" placeholder="End Date (YYYY-MM-DD)" aria-label="End Date" title="End Date (YYYY-MM-DD)">
-              <input type="text" id="rebni-search-input" class="search-input" placeholder="Search REBNI...">
-              <button id="rebni-download-btn" class="secondary-btn btn-sm" title="Download CSV">
-                <span class="btn-text">📥 Download CSV</span>
-              </button>
-            </div>
-          </div>
-          
-          <div class="table-container" id="rebni-table-container">
-            <div class="empty-state">
-              <p>REBNI data will be displayed here after running the investigation.</p>
-            </div>
-          </div>
-          
-          <div class="table-pagination-container hidden" id="rebni-pagination">
-            <!-- Rendered dynamically -->
-          </div>
-        </section>
-      </div>
-
-      <!-- Batch Summary Section -->
+      <!-- Batch Summary Section (moved above data tables for quick access) -->
       <div id="batch-summary-section" class="dashboard-grid full-grid hidden">
         <section class="card data-table-card" aria-labelledby="batch-table-title">
           <div class="card-header table-card-header">
@@ -292,127 +321,70 @@
         </section>
       </div>
 
-      <!-- Bottom Section: Phase 2 Investigation Results -->
-      <div id="engine-results-section" class="dashboard-grid results-grid hidden">
-        <!-- Left: ASIN Tabs Selection -->
-        <section class="card asin-list-card" aria-labelledby="asin-list-title">
-          <div class="card-header">
-            <div class="header-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      <!-- Data Tables (Invoice & REBNI raw analysis - below results for reference) -->
+      <div class="dashboard-grid middle-grid">
+        <!-- Invoice Analysis Table Card -->
+        <section class="card data-table-card" id="invoice-analysis-section" aria-labelledby="invoice-table-title">
+          <div class="card-header table-card-header">
+            <div class="header-left">
+              <div class="header-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              </div>
+              <h2 id="invoice-table-title">Invoice Analysis</h2>
             </div>
-            <h2 id="asin-list-title">Investigated ASINs</h2>
+            <div class="header-actions table-actions hidden" id="invoice-table-actions">
+              <input type="text" id="invoice-asin-filter" class="search-input filter-input" placeholder="Filter ASIN..." list="invoice-asin-list" aria-label="Filter by ASIN">
+              <datalist id="invoice-asin-list"></datalist>
+              <input type="text" id="invoice-number-filter" class="search-input filter-input" placeholder="Filter Invoice..." list="invoice-number-list" aria-label="Filter by Invoice">
+              <datalist id="invoice-number-list"></datalist>
+              <input type="text" id="invoice-matched-po-filter" class="search-input filter-input" placeholder="Filter Matched PO..." list="invoice-matched-po-list" aria-label="Filter by Matched PO">
+              <datalist id="invoice-matched-po-list"></datalist>
+              <input type="text" id="invoice-matched-asin-filter" class="search-input filter-input" placeholder="Filter Matched ASIN..." list="invoice-matched-asin-list" aria-label="Filter by Matched ASIN">
+              <datalist id="invoice-matched-asin-list"></datalist>
+              <input type="text" id="invoice-search-input" class="search-input" placeholder="Search Invoices...">
+              <button id="invoice-download-btn" class="secondary-btn btn-sm" title="Download CSV">
+                <span class="btn-text">📥 Download CSV</span>
+              </button>
+            </div>
           </div>
-          <div class="card-body asin-tabs-container" id="asin-tabs-list">
-            <!-- Populated dynamically -->
+          <div class="table-container" id="invoice-table-container">
+            <div class="empty-state">
+              <p>Invoice data will be displayed here after running the investigation.</p>
+            </div>
           </div>
+          <div class="table-pagination-container hidden" id="invoice-pagination"></div>
         </section>
 
-        <!-- Right: ASIN Result Detail Card (Timeline + Master Stats + Blub) -->
-        <section class="card result-detail-card" aria-labelledby="result-detail-title">
-          <div class="card-header">
-            <div class="header-icon success-icon" id="result-header-icon-container">
-              <svg id="success-icon-svg" class="success-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        <!-- REBNI Analysis Table Card -->
+        <section class="card data-table-card" id="rebni-analysis-section" aria-labelledby="rebni-table-title">
+          <div class="card-header table-card-header">
+            <div class="header-left">
+              <div class="header-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+              </div>
+              <h2 id="rebni-table-title">REBNI Analysis</h2>
             </div>
-            <h2 id="result-detail-title">Investigation Details</h2>
-            <div id="asin-result-badge" class="result-badge">Resolved</div>
-          </div>
-          <div class="card-body" id="asin-detail-body">
-            <!-- Master Details Grid -->
-            <div class="details-metadata-section">
-              <div class="metadata-row">
-                <span class="meta-label">Invoice Number</span>
-                <span class="meta-value" id="card-invoice-number">-</span>
-              </div>
-              <div class="metadata-row">
-                <span class="meta-label">ASIN</span>
-                <span class="meta-value" id="card-asin">-</span>
-              </div>
-              <div class="metadata-row">
-                <span class="meta-label">PO Number</span>
-                <span class="meta-value" id="card-po">-</span>
-              </div>
-              <div class="metadata-row">
-                <span class="meta-label">Warehouse ID</span>
-                <span class="meta-value" id="card-warehouse">-</span>
-              </div>
-              <div class="metadata-row">
-                <span class="meta-label">Invoice Status</span>
-                <span class="meta-value" id="card-status">-</span>
-              </div>
-            </div>
-
-            <!-- Highlight Metrics Row -->
-            <div class="metrics-highlight-row">
-              <div class="highlight-metric-card billed">
-                <span class="metric-icon">📦</span>
-                <div class="metric-info">
-                  <span class="metric-label">Billed Qty</span>
-                  <span class="metric-value" id="card-billed-qty">-</span>
-                </div>
-              </div>
-              <div class="highlight-metric-card received">
-                <span class="metric-icon">✔</span>
-                <div class="metric-info">
-                  <span class="metric-label">Received Qty</span>
-                  <span class="metric-value" id="card-received-qty">-</span>
-                </div>
-              </div>
-              <div class="highlight-metric-card missing">
-                <span class="metric-icon">⚠️</span>
-                <div class="metric-info">
-                  <span class="metric-label">Missing Qty</span>
-                  <span class="metric-value" id="card-missing-qty">-</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="results-inner-grid">
-              <!-- Timeline Logs -->
-              <div class="results-timeline-panel">
-                <h3>Investigation Timeline</h3>
-                <div class="timeline-checklist" id="card-timeline-list">
-                  <!-- Rendered dynamically -->
-                </div>
-              </div>
-
-              <!-- Generated Blub -->
-              <div class="results-blub-panel">
-                <div class="blub-header">
-                  <h3>Generated Blurb / Internal Note</h3>
-                  <button id="copy-blub-btn" class="secondary-btn btn-sm copy-btn">
-                    <span class="btn-text">Copy</span>
-                  </button>
-                </div>
-                <div class="blub-container">
-                  <pre id="card-blub-content">-</pre>
-                </div>
+            <div class="header-actions table-actions hidden" id="rebni-table-actions">
+              <input type="text" id="rebni-asin-filter" class="search-input filter-input" placeholder="Filter ASIN..." list="rebni-asin-list" aria-label="Filter by ASIN">
+              <datalist id="rebni-asin-list"></datalist>
+              <input type="text" id="rebni-po-filter" class="search-input filter-input" placeholder="Filter PO..." list="rebni-po-list" aria-label="Filter by PO">
+              <datalist id="rebni-po-list"></datalist>
+              <input type="text" id="rebni-warehouse-filter" class="search-input filter-input" placeholder="Filter Warehouse..." list="rebni-warehouse-list" aria-label="Filter by Warehouse">
+              <datalist id="rebni-warehouse-list"></datalist>
+              <input type="text" id="rebni-start-date-filter" class="search-input filter-input" placeholder="Start Date (YYYY-MM-DD)" aria-label="Start Date" title="Start Date (YYYY-MM-DD)">
+              <input type="text" id="rebni-end-date-filter" class="search-input filter-input" placeholder="End Date (YYYY-MM-DD)" aria-label="End Date" title="End Date (YYYY-MM-DD)">
+              <input type="text" id="rebni-search-input" class="search-input" placeholder="Search REBNI...">
+              <button id="rebni-download-btn" class="secondary-btn btn-sm" title="Download CSV">
+                <span class="btn-text">📥 Download CSV</span>
+              </button>
             </div>
           </div>
-
-            <!-- Filtered Source Data Tables -->
-            <div class="results-tables-section">
-              <hr class="section-divider">
-              <h3 class="section-subtitle" id="card-source-tables-title">Filtered Source Data</h3>
-              
-              <div class="results-tables-grid">
-                <!-- Mini Invoice Table -->
-                <div class="source-table-wrapper">
-                  <h4>Filtered Invoice Records</h4>
-                  <div class="table-container mini-table" id="card-invoice-table-container">
-                    <!-- Rendered dynamically -->
-                  </div>
-                </div>
-
-                <!-- Mini REBNI Table -->
-                <div class="source-table-wrapper">
-                  <h4>Filtered REBNI Records</h4>
-                  <div class="table-container mini-table" id="card-rebni-table-container">
-                    <!-- Rendered dynamically -->
-                  </div>
-                </div>
-              </div>
+          <div class="table-container" id="rebni-table-container">
+            <div class="empty-state">
+              <p>REBNI data will be displayed here after running the investigation.</p>
             </div>
           </div>
+          <div class="table-pagination-container hidden" id="rebni-pagination"></div>
         </section>
       </div>
     </main>

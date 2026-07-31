@@ -1,8 +1,13 @@
 /* ==========================================================================
-   PD Investigation Dashboard - Frontend Logic
+   PD Investigation Dashboard - Frontend Logic v2
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Smooth page-load reveal
+  document.body.style.opacity = '0';
+  document.body.style.transition = 'opacity 0.3s ease';
+  requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+
   // UI Cache Elements
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
   const clockEl = document.getElementById('real-time-clock');
@@ -105,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   
-  const engineResultsSection = document.getElementById('engine-results-section');
+  const engineResultsSection = document.getElementById('inline-results-container');
   const asinTabsList = document.getElementById('asin-tabs-list');
   const copyBlubBtn = document.getElementById('copy-blub-btn');
   
@@ -124,16 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==========================================================================
   function updateClock() {
     const now = new Date();
-    // Format options matching a clean premium look: YYYY-MM-DD HH:mm:ss IST
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    
-    clockEl.textContent = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    const options = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+    clockEl.textContent = now.toLocaleTimeString('en-IN', options);
   }
   setInterval(updateClock, 1000);
   updateClock();
@@ -424,7 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { key: 'matched_invoice_numbers', label: 'Matched Invoice No.', isMono: true }
   ];
 
-  const PAGE_SIZE = 10;
+  const PAGE_SIZE = 15;
 
   function setupFilterAutocomplete(inputEl, datalistId, uniqueValues) {
     if (!inputEl) return;
@@ -862,8 +859,7 @@ document.addEventListener('DOMContentLoaded', () => {
           // Trigger form submit
           engineForm.dispatchEvent(new Event('submit'));
           
-          // Scroll down to detailed results section
-          document.getElementById('engine-runner-section').scrollIntoView({ behavior: 'smooth' });
+          // Scroll will happen automatically after results load
         };
         tdAction.appendChild(runBtn);
         tr.appendChild(tdAction);
@@ -1028,6 +1024,11 @@ document.addEventListener('DOMContentLoaded', () => {
       engineResultsSection.classList.remove('hidden');
       renderAsinTabs(combinedBlurb);
 
+      // Scroll to results section so user sees output immediately
+      setTimeout(() => {
+        document.getElementById('inline-results-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+
     } catch (error) {
       console.error(error);
       engineError.textContent = error.message;
@@ -1122,7 +1123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     badge.className = 'result-badge primary';
 
     const headerIconContainer = document.getElementById('result-header-icon-container');
-    headerIconContainer.className = 'header-icon info-icon';
+    if (headerIconContainer) headerIconContainer.className = 'header-icon info-icon';
 
     // Summary timeline
     const timelineList = document.getElementById('card-timeline-list');
@@ -1211,13 +1212,15 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (asinRes.result === 'Paused') badge.classList.add('warning');
 
     const headerIconContainer = document.getElementById('result-header-icon-container');
-    headerIconContainer.className = 'header-icon';
-    if (asinRes.result === 'Resolved - Fully Processed' || asinRes.result === 'Completed') {
-      headerIconContainer.classList.add('success-icon');
-    } else if (asinRes.result === 'Discrepancy Found') {
-      headerIconContainer.classList.add('warning-icon');
-    } else {
-      headerIconContainer.classList.add('info-icon');
+    if (headerIconContainer) {
+      headerIconContainer.className = 'header-icon';
+      if (asinRes.result === 'Resolved - Fully Processed' || asinRes.result === 'Completed') {
+        headerIconContainer.classList.add('success-icon');
+      } else if (asinRes.result === 'Discrepancy Found') {
+        headerIconContainer.classList.add('warning-icon');
+      } else {
+        headerIconContainer.classList.add('info-icon');
+      }
     }
 
     const timelineList = document.getElementById('card-timeline-list');
@@ -1279,12 +1282,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!blurbToCopy) return;
 
     navigator.clipboard.writeText(blurbToCopy).then(() => {
-      copyBlubBtn.querySelector('.btn-text').textContent = 'Copied!';
+      copyBlubBtn.querySelector('.btn-text').textContent = 'Copied';
       copyBlubBtn.classList.add('success');
+      copyBlubBtn.style.transform = 'scale(0.95)';
+      setTimeout(() => { copyBlubBtn.style.transform = ''; }, 150);
       setTimeout(() => {
         copyBlubBtn.querySelector('.btn-text').textContent = 'Copy';
         copyBlubBtn.classList.remove('success');
-      }, 2000);
+      }, 2500);
     }).catch(err => {
       console.error('Failed to copy text: ', err);
     });
