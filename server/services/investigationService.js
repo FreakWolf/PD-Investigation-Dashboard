@@ -249,7 +249,14 @@ Regards.`;
     }
 
     if (manualMissingQty === null || manualMissingQty === undefined) {
-      received = Math.max(0, ...matchedInvoices.map(r => parseInt(r.quantity_matched, 10) || 0));
+      const uniqueInvMatches = new Map();
+      matchedInvoices.forEach(r => {
+        const invNum = (r.invoice_number || '').trim().toUpperCase();
+        if (!uniqueInvMatches.has(invNum)) {
+          uniqueInvMatches.set(invNum, parseInt(r.quantity_matched, 10) || 0);
+        }
+      });
+      received = Array.from(uniqueInvMatches.values()).reduce((sum, qty) => sum + qty, 0);
     }
 
     const hasOnHold = matchedInvoices.some(r => {
@@ -260,14 +267,31 @@ Regards.`;
     if (hasOnHold && !isManualDiscrepancyForce) {
       logs.push('✔ ON_HOLD found. Checking for available REBNI inventory first.');
       const onHoldRecords = matchedInvoices.filter(r => (r.invoice_item_status || '').trim().toUpperCase() === 'ON_HOLD');
-      const onHoldQty = Math.max(0, ...onHoldRecords.map(r => parseInt(r.quantity_invoiced, 10) || 0));
-      const cpVal = cp !== null ? cp : parseFloat(matchedRebnis.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase())?.item_cost || 0);
+      const onHoldQty = Math.max(0, billed - received);
+      let cpVal = cp !== null ? cp : parseFloat(matchedRebnis.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase())?.item_cost || 0);
+      if (cpVal === 0) {
+        const globalRebniForAsin = this.activeInvestigation?.rebniRecords?.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase() && parseFloat(r.item_cost) > 0);
+        if (globalRebniForAsin) {
+          cpVal = parseFloat(globalRebniForAsin.item_cost);
+          logs.push(`No exact REBNI match found. Using global CP fallback: ${cpVal.toFixed(2)}`);
+        }
+      }
       logs.push(`🔹 ON_HOLD details: Billed=${billed}, Matched/Received=${received}, Missing=${onHoldQty}`);
 
-      // Derive effective warehouse — use user input if provided, else derive from matched REBNI for this PO
-      const effectiveWarehouse = warehouseId
-        ? warehouseId.trim().toUpperCase()
-        : (matchedRebnis.find(r => (r.warehouse_id || '').trim())?.warehouse_id || '').trim().toUpperCase();
+      let effectiveWarehouse = warehouseId ? warehouseId.trim().toUpperCase() : '';
+      if (!effectiveWarehouse) {
+        effectiveWarehouse = (matchedRebnis.find(r => (r.warehouse_id || '').trim())?.warehouse_id || '').trim().toUpperCase();
+      }
+      if (!effectiveWarehouse) {
+        const invoiceRows = this.activeInvestigation?.invoiceRecords?.filter(r => (r.invoice_number || '').trim().toUpperCase() === invoiceNumber.toUpperCase()) || [];
+        const shipmentId = (invoiceRows.find(r => (r.shipment_id || '').trim())?.shipment_id || '').trim().toUpperCase();
+        if (shipmentId && shipmentId.includes('-')) {
+          const parts = shipmentId.split('-');
+          if (parts.length >= 2) {
+            effectiveWarehouse = parts[1];
+          }
+        }
+      }
       if (effectiveWarehouse) {
         logs.push(`🔹 Warehouse filter applied: ${effectiveWarehouse}`);
       }
@@ -443,7 +467,14 @@ Please check and help locate the missing units against the above invoices.`;
         missingQty = billed;
         received = 0;
       }
-      const cpVal = cp !== null ? cp : 0;
+      let cpVal = cp !== null ? cp : 0;
+      if (cpVal === 0) {
+        const globalRebniForAsin = this.activeInvestigation?.rebniRecords?.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase() && parseFloat(r.item_cost) > 0);
+        if (globalRebniForAsin) {
+          cpVal = parseFloat(globalRebniForAsin.item_cost);
+          logs.push(`No exact REBNI match found. Using global CP fallback: ${cpVal.toFixed(2)}`);
+        }
+      }
 
       return {
         status: 'No REBNI Data',
@@ -1002,12 +1033,6 @@ Regards.`
         ? (matchedInvoices[0].invoice_number || '').trim() || invoiceNumbers[0]
         : invoiceNumbers[0];
 
-      if (manualCp === null || manualCp === undefined) {
-        const globalRebniForAsin = this.activeInvestigation.rebniRecords.find(r => (r.asin || '').trim().toUpperCase() === currentAsin.toUpperCase() && parseFloat(r.item_cost) > 0);
-        if (globalRebniForAsin) {
-          manualCp = parseFloat(globalRebniForAsin.item_cost);
-        }
-      }
 
       const result = this.runRulesInternal(
         effectiveInvoiceNumber,
