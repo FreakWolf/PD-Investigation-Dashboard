@@ -476,6 +476,92 @@ Please check and help locate the missing units against the above invoices.`;
         }
       }
 
+      // Check for available REBNI inventory cross-PO (same ASIN + warehouse)
+      logs.push(`Checking for available REBNI inventory (cross-PO) for ASIN: "${asin}", Warehouse: "${warehouseId}".`);
+      let startDateStart = null;
+      let endDateStart = null;
+      const invDate = matchedInvoices.map(r => r.invoice_date).filter(Boolean)[0];
+      if (invDate) {
+        const startLimit = new Date(invDate);
+        if (!isNaN(startLimit.getTime())) {
+          startDateStart = new Date(startLimit.getFullYear(), startLimit.getMonth(), startLimit.getDate());
+          endDateStart = new Date(startDateStart);
+          endDateStart.setDate(startDateStart.getDate() + 30);
+        }
+      }
+
+      const availableRebniRecords = this.activeInvestigation.rebniRecords.filter(r => {
+        const availQty = parseInt(r.rebni_available, 10) || 0;
+        if (availQty <= 0) return false;
+
+        const asinMatch = (r.asin || '').trim().toUpperCase() === asin.toUpperCase();
+        if (!asinMatch) return false;
+
+        // Warehouse match (if provided)
+        if (warehouseId) {
+          const whMatch = (r.warehouse_id || '').trim().toUpperCase() === warehouseId.toUpperCase();
+          if (!whMatch) return false;
+        }
+
+        // Date range check (within 30 days of invoice date)
+        if (startDateStart && endDateStart && r.received_datetime) {
+          const rDate = new Date(r.received_datetime);
+          if (!isNaN(rDate.getTime())) {
+            const rDateStart = new Date(rDate.getFullYear(), rDate.getMonth(), rDate.getDate());
+            return rDateStart >= startDateStart && rDateStart <= endDateStart;
+          }
+        }
+
+        return true;
+      });
+
+      if (availableRebniRecords.length > 0) {
+        const totalRebniAvail = availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
+        logs.push(`✔ REBNI Available Inventory found (cross-PO): ${availableRebniRecords.length} records. Total available: ${totalRebniAvail}`);
+
+        const detailsLines = availableRebniRecords.map(r => {
+          const rPo = (r.po || '').trim();
+          const rAsin = (r.asin || '').trim();
+          const rShip = (r.shipment_id || '').trim();
+          const rCost = parseFloat(r.item_cost) || 0;
+          const rAvail = parseInt(r.rebni_available, 10) || 0;
+          return `${rPo} | ${rAsin} | ${rShip} | ${rCost.toFixed(2)} | ${rAvail}`;
+        }).join('\n\n');
+
+        if (cpVal === 0 && availableRebniRecords[0].item_cost) {
+          cpVal = parseFloat(availableRebniRecords[0].item_cost) || 0;
+        }
+
+        const closingText = totalRebniAvail >= missingQty
+          ? "Kindly utilize the available REBNI inventory and proceed with closing the PQV."
+          : "Kindly utilize the available REBNI inventory and provide with the updated PQV.";
+
+        const blurb = `Hi Team,
+
+REBNI inventory is available for the below ASIN${availableRebniRecords.length > 1 ? 's' : ''}:
+
+Details for reference:
+
+${detailsLines}
+
+${closingText}
+
+Regards,`;
+
+        return {
+          status: 'REBNI Inventory Available',
+          logs,
+          billed,
+          received,
+          missingQty,
+          cp: cpVal,
+          blurb,
+          availableRebniRecords
+        };
+      }
+
+      logs.push(`No available REBNI inventory found cross-PO.`);
+
       return {
         status: 'No REBNI Data',
         logs,
