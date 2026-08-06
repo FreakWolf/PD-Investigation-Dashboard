@@ -267,10 +267,7 @@ Regards.`;
     if (hasOnHold && !isManualDiscrepancyForce) {
       logs.push('✔ ON_HOLD found. Checking for available REBNI inventory first.');
       const onHoldRecords = matchedInvoices.filter(r => (r.invoice_item_status || '').trim().toUpperCase() === 'ON_HOLD');
-      // Calculate missing from ON_HOLD rows: their invoiced qty minus their matched qty
-      const onHoldBilled = onHoldRecords.reduce((sum, r) => sum + (parseInt(r.quantity_invoiced, 10) || 0), 0);
-      const onHoldReceived = onHoldRecords.reduce((sum, r) => sum + (parseInt(r.quantity_matched, 10) || 0), 0);
-      const onHoldQty = Math.max(0, onHoldBilled - onHoldReceived);
+      const onHoldQty = Math.max(0, billed - received);
       let cpVal = cp !== null ? cp : parseFloat(matchedRebnis.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase())?.item_cost || 0);
       if (cpVal === 0) {
         const globalRebniForAsin = this.activeInvestigation?.rebniRecords?.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase() && parseFloat(r.item_cost) > 0);
@@ -279,7 +276,7 @@ Regards.`;
           logs.push(`No exact REBNI match found. Using global CP fallback: ${cpVal.toFixed(2)}`);
         }
       }
-      logs.push(`🔹 ON_HOLD details: Billed=${onHoldBilled}, Received=${onHoldReceived}, Missing=${onHoldQty}`);
+      logs.push(`🔹 ON_HOLD details: Billed=${billed}, Received=${received}, Missing=${onHoldQty}`);
 
       let effectiveWarehouse = warehouseId ? warehouseId.trim().toUpperCase() : '';
       if (!effectiveWarehouse) {
@@ -365,8 +362,8 @@ Regards,`;
         return {
           status: 'REBNI Inventory Available',
           logs,
-          billed: onHoldBilled,
-          received: onHoldReceived,
+          billed,
+          received,
           missingQty: onHoldQty,
           cp: cpVal,
           blurb,
@@ -408,7 +405,7 @@ ${asin}	              ${onHoldQty}	${finalCp.toFixed(2)}
 
 
 For ASIN: ${asin}
-Billed: ${onHoldBilled}, Received: ${onHoldReceived}
+Billed: ${billed}, Received: ${received}
 Matched: ${matchedRebniForHold.matched_invoice_numbers}
 
 ${loopDetailsText}
@@ -422,8 +419,8 @@ Please check and help locate the missing units against the above invoices.`;
           return {
             status: 'Loop Discrepancy Found',
             logs,
-            billed: onHoldBilled,
-            received: onHoldReceived,
+            billed,
+            received,
             missingQty: onHoldQty,
             cp: finalCp,
             blurb,
@@ -441,7 +438,7 @@ ${asin}	                    ${onHoldQty}	${cpVal % 1 === 0 ? cpVal.toFixed(0) : 
 
 
 For ASIN: ${asin}
-Billed: ${onHoldBilled}, Received: ${onHoldReceived}
+Billed: ${billed}, Received: ${received}
 
 Kindly investigate the following invoices and ASINs for missing units:
 
@@ -453,8 +450,8 @@ Please check and help locate the missing units against the above invoices.`;
       return {
         status: 'Discrepancy (On Hold)',
         logs,
-        billed: onHoldBilled,
-        received: onHoldReceived,
+        billed,
+        received,
         missingQty: onHoldQty,
         cp: cpVal,
         blurb
