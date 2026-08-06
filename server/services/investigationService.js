@@ -279,7 +279,7 @@ Regards.`;
           logs.push(`No exact REBNI match found. Using global CP fallback: ${cpVal.toFixed(2)}`);
         }
       }
-      logs.push(`🔹 ON_HOLD details: Billed=${billed}, Matched/Received=${received}, Missing=${onHoldQty}`);
+      logs.push(`🔹 ON_HOLD details: Billed=${onHoldBilled}, Received=${onHoldReceived}, Missing=${onHoldQty}`);
 
       let effectiveWarehouse = warehouseId ? warehouseId.trim().toUpperCase() : '';
       if (!effectiveWarehouse) {
@@ -365,8 +365,8 @@ Regards,`;
         return {
           status: 'REBNI Inventory Available',
           logs,
-          billed,
-          received,
+          billed: onHoldBilled,
+          received: onHoldReceived,
           missingQty: onHoldQty,
           cp: cpVal,
           blurb,
@@ -408,7 +408,7 @@ ${asin}	              ${onHoldQty}	${finalCp.toFixed(2)}
 
 
 For ASIN: ${asin}
-Billed: ${billed}, Received: ${received}
+Billed: ${onHoldBilled}, Received: ${onHoldReceived}
 Matched: ${matchedRebniForHold.matched_invoice_numbers}
 
 ${loopDetailsText}
@@ -422,8 +422,8 @@ Please check and help locate the missing units against the above invoices.`;
           return {
             status: 'Loop Discrepancy Found',
             logs,
-            billed,
-            received,
+            billed: onHoldBilled,
+            received: onHoldReceived,
             missingQty: onHoldQty,
             cp: finalCp,
             blurb,
@@ -441,7 +441,7 @@ ${asin}	                    ${onHoldQty}	${cpVal % 1 === 0 ? cpVal.toFixed(0) : 
 
 
 For ASIN: ${asin}
-Billed: ${billed}, Received: ${received}
+Billed: ${onHoldBilled}, Received: ${onHoldReceived}
 
 Kindly investigate the following invoices and ASINs for missing units:
 
@@ -453,8 +453,8 @@ Please check and help locate the missing units against the above invoices.`;
       return {
         status: 'Discrepancy (On Hold)',
         logs,
-        billed,
-        received,
+        billed: onHoldBilled,
+        received: onHoldReceived,
         missingQty: onHoldQty,
         cp: cpVal,
         blurb
