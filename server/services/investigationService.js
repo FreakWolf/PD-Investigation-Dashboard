@@ -267,7 +267,10 @@ Regards.`;
     if (hasOnHold && !isManualDiscrepancyForce) {
       logs.push('✔ ON_HOLD found. Checking for available REBNI inventory first.');
       const onHoldRecords = matchedInvoices.filter(r => (r.invoice_item_status || '').trim().toUpperCase() === 'ON_HOLD');
-      const onHoldQty = Math.max(0, billed - received);
+      // Calculate missing from ON_HOLD rows: their invoiced qty minus their matched qty
+      const onHoldBilled = onHoldRecords.reduce((sum, r) => sum + (parseInt(r.quantity_invoiced, 10) || 0), 0);
+      const onHoldReceived = onHoldRecords.reduce((sum, r) => sum + (parseInt(r.quantity_matched, 10) || 0), 0);
+      const onHoldQty = Math.max(0, onHoldBilled - onHoldReceived);
       let cpVal = cp !== null ? cp : parseFloat(matchedRebnis.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase())?.item_cost || 0);
       if (cpVal === 0) {
         const globalRebniForAsin = this.activeInvestigation?.rebniRecords?.find(r => (r.asin || '').trim().toUpperCase() === asin.toUpperCase() && parseFloat(r.item_cost) > 0);
