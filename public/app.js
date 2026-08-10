@@ -95,12 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setEngineFormActive(true);
         
         renderTableLoading('batch-table-container');
-        const batchSummaryRes = await fetch('/api/investigate/batch-summary');
-        if (batchSummaryRes.ok) {
-          const batchData = await batchSummaryRes.json();
-          document.getElementById('batch-summary-section').classList.remove('hidden');
-          initBatchTable(batchData);
-        }
+        loadBatchSummaryStream();
       } else {
         setEngineFormActive(false);
       }
@@ -288,16 +283,8 @@ document.addEventListener('DOMContentLoaded', () => {
       populateEngineInputs();
       setEngineFormActive(true);
 
-      // Fetch and display batch summary
-      renderTableLoading('batch-table-container');
-      const batchSummaryRes = await fetch('/api/investigate/batch-summary');
-      if (batchSummaryRes.ok) {
-        const batchData = await batchSummaryRes.json();
-        document.getElementById('batch-summary-section').classList.remove('hidden');
-        initBatchTable(batchData);
-      } else {
-        console.error('Failed to load batch summary.');
-      }
+      // Fetch and display batch summary (streaming, non-blocking)
+      loadBatchSummaryStream();
       
     } catch (error) {
       console.error(error);
@@ -698,6 +685,81 @@ document.addEventListener('DOMContentLoaded', () => {
     { key: 'missingQty', label: 'Missing Qty' },
     { key: 'cp', label: 'CP Cost' }
   ];
+
+  // ==========================================================================
+  // Batch Summary Streaming Loader (non-blocking)
+  // ==========================================================================
+  let batchStreamData = [];
+  let batchEventSource = null;
+
+  function loadBatchSummaryStream() {
+    // Abort any existing stream
+    if (batchEventSource) {
+      batchEventSource.close();
+      batchEventSource = null;
+    }
+
+    batchStreamData = [];
+    const batchSection = document.getElementById('batch-summary-section');
+    const batchContainer = document.getElementById('batch-table-container');
+    batchSection.classList.remove('hidden');
+
+    batchContainer.innerHTML = `
+      <div class="batch-progress-container">
+        <div class="batch-progress-text" id="batch-progress-text">Preparing batch scan...</div>
+        <div class="batch-progress-bar-wrapper">
+          <div class="batch-progress-bar" id="batch-progress-bar" style="width: 0%"></div>
+        </div>
+      </div>
+    `;
+
+    batchEventSource = new EventSource('/api/investigate/batch-summary-stream');
+
+    let chunkCount = 0;
+
+    batchEventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'init') {
+          document.getElementById('batch-progress-text').textContent = `Scanning 0 / ${data.total} pairs...`;
+        } else if (data.type === 'chunk') {
+          batchStreamData.push(...data.results);
+          chunkCount++;
+          const pct = Math.round((data.processed / data.total) * 100);
+          document.getElementById('batch-progress-text').textContent = `Scanning ${data.processed} / ${data.total} pairs...`;
+          document.getElementById('batch-progress-bar').style.width = `${pct}%`;
+
+          // Only refresh table every 5 chunks to avoid UI thrashing
+          if (chunkCount % 5 === 0) {
+            initBatchTable(batchStreamData);
+          }
+        } else if (data.type === 'complete') {
+          // Final render with all data
+          initBatchTable(batchStreamData);
+          const progressEl = document.querySelector('.batch-progress-container');
+          if (progressEl) progressEl.remove();
+          batchEventSource.close();
+          batchEventSource = null;
+        } else if (data.type === 'error') {
+          batchContainer.innerHTML = `<div class="empty-state"><p>Error: ${data.message}</p></div>`;
+          batchEventSource.close();
+          batchEventSource = null;
+        }
+      } catch (e) {
+        console.error('Batch stream parse error:', e);
+      }
+    };
+
+    batchEventSource.onerror = () => {
+      batchEventSource.close();
+      batchEventSource = null;
+      // If we have partial data, keep showing it
+      if (batchStreamData.length === 0) {
+        batchContainer.innerHTML = `<div class="empty-state"><p>Failed to load batch summary.</p></div>`;
+      }
+    };
+  }
 
   function initBatchTable(rawData) {
     const searchInput = document.getElementById(`batch-search-input`);

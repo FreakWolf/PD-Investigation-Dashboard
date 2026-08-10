@@ -150,10 +150,9 @@ Regards,`;
       const targetInvStrForHold = invoiceNumber.trim().toLowerCase();
       const matchedRebniForHold = rebniRecords.find(r => {
         const invs = (r.matched_invoice_numbers || '').trim().toLowerCase().split(/[\s,;]+/);
-        return invs.some(inv => inv === targetInvStrForHold || inv.startsWith(targetInvStrForHold) || targetInvStrForHold.startsWith(inv)) ||
+        return invs.some(inv => inv === targetInvStrForHold || inv.startsWith(targetInvStrForHold)) ||
           (r.matched_invoice_numbers || '').trim().toLowerCase() === targetInvStrForHold ||
-          (r.matched_invoice_numbers || '').trim().toLowerCase().startsWith(targetInvStrForHold) ||
-          targetInvStrForHold.startsWith((r.matched_invoice_numbers || '').trim().toLowerCase());
+          (r.matched_invoice_numbers || '').trim().toLowerCase().startsWith(targetInvStrForHold);
       });
 
       if (matchedRebniForHold && parseInt(matchedRebniForHold.cnt_invoice_matched, 10) > 1) {

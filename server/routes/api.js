@@ -1,4 +1,10 @@
 import express from 'express';
+import { Worker } from 'worker_threads';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename_api = fileURLToPath(import.meta.url);
+const __dirname_api = path.dirname(__filename_api);
 import { 
   getAvailableSellers, 
   filterTsvByVendorCode, 
@@ -253,6 +259,63 @@ router.get('/investigate/batch-summary', (req, res) => {
     res.json(summary);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/investigate/batch-summary-stream
+ * Stream batch summary results progressively using Server-Sent Events.
+ * Processing runs in a Worker Thread to avoid blocking the main event loop.
+ */
+router.get('/investigate/batch-summary-stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  try {
+    const session = investigationService.getActiveInvestigation();
+    if (!session.invoiceRecords || session.invoiceRecords.length === 0) {
+      res.write(`data: ${JSON.stringify({ type: 'complete', results: [], total: 0 })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const workerPath = path.join(__dirname_api, '..', 'services', 'batchWorker.js');
+    const worker = new Worker(workerPath, {
+      workerData: {
+        invoiceRecords: session.invoiceRecords,
+        rebniRecords: session.rebniRecords
+      }
+    });
+
+    worker.on('message', (data) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (data.type === 'complete') {
+        res.end();
+      }
+    });
+
+    worker.on('error', (err) => {
+      console.error('Batch worker error:', err);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+      res.end();
+    });
+
+    worker.on('exit', (code) => {
+      if (code !== 0) {
+        res.write(`data: ${JSON.stringify({ type: 'error', message: `Worker exited with code ${code}` })}\n\n`);
+        res.end();
+      }
+    });
+
+    // Handle client disconnect — terminate the worker
+    req.on('close', () => {
+      worker.terminate();
+    });
+  } catch (error) {
+    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+    res.end();
   }
 });
 

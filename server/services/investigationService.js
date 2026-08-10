@@ -375,10 +375,9 @@ Regards,`;
       const targetInvStrForHold = invoiceNumber.trim().toLowerCase();
       const matchedRebniForHold = matchedRebnis.find(r => {
         const invs = (r.matched_invoice_numbers || '').trim().toLowerCase().split(/[\s,;]+/);
-        return invs.some(inv => inv === targetInvStrForHold || inv.startsWith(targetInvStrForHold) || targetInvStrForHold.startsWith(inv)) ||
+        return invs.some(inv => inv === targetInvStrForHold || inv.startsWith(targetInvStrForHold)) ||
           (r.matched_invoice_numbers || '').trim().toLowerCase() === targetInvStrForHold ||
-          (r.matched_invoice_numbers || '').trim().toLowerCase().startsWith(targetInvStrForHold) ||
-          targetInvStrForHold.startsWith((r.matched_invoice_numbers || '').trim().toLowerCase());
+          (r.matched_invoice_numbers || '').trim().toLowerCase().startsWith(targetInvStrForHold);
       });
 
       if (matchedRebniForHold && parseInt(matchedRebniForHold.cnt_invoice_matched, 10) > 1) {
@@ -394,7 +393,12 @@ Regards,`;
 
           const finalCp = parseFloat(loopResult.rebniRecord ? loopResult.rebniRecord.item_cost : 0) || cpVal;
 
-          const culpritText = loopResult.culpritInvoices.map(c => `Invoice: ${c.invoice}\nASIN: ${c.asin}`).join('\n\n');
+          // If loop found culprits, show them. Otherwise units are missing from the original invoice.
+          const hasCulprits = loopResult.culpritInvoices && loopResult.culpritInvoices.length > 0;
+          const culpritText = hasCulprits
+            ? loopResult.culpritInvoices.map(c => `Invoice: ${c.invoice}\nASIN: ${c.asin}`).join('\n\n')
+            : `Invoice: ${invoiceNumber}\nASIN: ${asin}`;
+          const missingFromLine = hasCulprits ? '' : `\nUnits missing from invoice: ${invoiceNumber}\n`;
 
           const blurb = `Hello Team,
 
@@ -409,12 +413,14 @@ Billed: ${billed}, Received: ${received}
 Matched: ${matchedRebniForHold.matched_invoice_numbers}
 
 ${loopDetailsText}
-
+${missingFromLine}
 Kindly investigate the following invoices and ASINs for missing units:
 
 ${culpritText}
 
-Please check and help locate the missing units against the above invoices.`;
+Please check and help locate the missing units against the above invoices.
+
+Regards.`;
 
           return {
             status: 'Loop Discrepancy Found',
@@ -423,6 +429,49 @@ Please check and help locate the missing units against the above invoices.`;
             received,
             missingQty: onHoldQty,
             cp: finalCp,
+            blurb,
+            loopResult
+          };
+        } else if (loopResult.type === 'NO_DISCREPANCY_IN_LOOP') {
+          const loopDetailsText = loopResult.loopDetails.map(detail => {
+            return `Upon Checking Invoice: ${detail.checkingInvoice}\n` +
+              `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}\n` +
+              `Billed: ${detail.billed}, Received: ${detail.received}\n` +
+              (detail.matchedInvoicesList ? `Matched: ${detail.matchedInvoicesList}\n` : '') + `__`;
+          }).join('\n\n');
+
+          const blurb = `Hello Team,
+
+-- Kindly find the below mentioned ASIN's missing from PO# : ${po}
+
+        ASIN	   Missing QTY	CP
+${asin}	              ${onHoldQty}	${cpVal % 1 === 0 ? cpVal.toFixed(0) : cpVal.toFixed(2)}
+
+
+For ASIN: ${asin}
+Billed: ${billed}, Received: ${received}
+Matched: ${matchedRebniForHold.matched_invoice_numbers}
+
+${loopDetailsText}
+
+Units missing from invoice: ${invoiceNumber}
+
+Kindly investigate the following invoices and ASINs for missing units:
+
+Invoice: ${invoiceNumber}
+ASIN: ${asin}
+
+Please check and help locate the missing units against the above invoices.
+
+Regards.`;
+
+          return {
+            status: 'Loop Discrepancy Found',
+            logs,
+            billed,
+            received,
+            missingQty: onHoldQty,
+            cp: cpVal,
             blurb,
             loopResult
           };
@@ -598,9 +647,8 @@ Please check and help locate the missing units against the above invoices.`
 
       const isInvoiceMatched = matchedInvsStr === targetInvStr ||
         matchedInvsStr.startsWith(targetInvStr) ||
-        targetInvStr.startsWith(matchedInvsStr) ||
         matchedInvsStr.split(/[\s,;]+/).some(inv =>
-          inv === targetInvStr || inv.startsWith(targetInvStr) || targetInvStr.startsWith(inv)
+          inv === targetInvStr || inv.startsWith(targetInvStr)
         );
 
       if (isInvoiceMatched) {
@@ -610,10 +658,9 @@ Please check and help locate the missing units against the above invoices.`
           let dbReceived = 0;
           matchedRebnis.forEach(r => {
             const invs = (r.matched_invoice_numbers || '').trim().toLowerCase().split(/[\s,;]+/);
-            const isMatched = invs.some(inv => inv === targetInvStr || inv.startsWith(targetInvStr) || targetInvStr.startsWith(inv)) ||
+            const isMatched = invs.some(inv => inv === targetInvStr || inv.startsWith(targetInvStr)) ||
               (r.matched_invoice_numbers || '').trim().toLowerCase() === targetInvStr ||
-              (r.matched_invoice_numbers || '').trim().toLowerCase().startsWith(targetInvStr) ||
-              targetInvStr.startsWith((r.matched_invoice_numbers || '').trim().toLowerCase());
+              (r.matched_invoice_numbers || '').trim().toLowerCase().startsWith(targetInvStr);
             if (isMatched) {
               dbReceived += parseInt(r.quantity_matched) || 0;
             }
@@ -832,12 +879,16 @@ Matched: ${rebni.matched_invoice_numbers}
 
 ${loopDetailsText}
 
+Units missing from invoice: ${invoiceNumber}
+
 Kindly investigate the following invoices and ASINs for missing units:
 
-Invoice: ${loopResult.finalInvoice}
-ASIN: ${loopResult.finalAsin}
+Invoice: ${invoiceNumber}
+ASIN: ${asin}
 
-Please check and help locate the missing units against the above invoices.`;
+Please check and help locate the missing units against the above invoices.
+
+Regards.`;
 
             return {
               status: 'Loop Discrepancy Found',
@@ -846,6 +897,52 @@ Please check and help locate the missing units against the above invoices.`;
               received: matchedQty,
               missingQty: finalMissingQty,
               cp: finalCp,
+              blurb,
+              loopResult
+            };
+          } else if (loopResult.type === 'NO_DISCREPANCY_IN_LOOP') {
+            const loopDetailsText = loopResult.loopDetails.map(detail => {
+              return `Upon Checking Invoice: ${detail.checkingInvoice}\n` +
+                `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}\n` +
+                `Billed: ${detail.billed}, Received: ${detail.received}\n` +
+                (detail.matchedInvoicesList ? `Matched: ${detail.matchedInvoicesList}\n` : '') + `__`;
+            }).join('\n\n');
+
+            const finalMissingQty2 = Math.max(0, billed - received);
+            const finalCp2 = parseFloat(rebni.item_cost) || 0;
+
+            const blurb = `Hello Team,
+
+-- Kindly find the below mentioned ASIN's missing from PO# : ${po}
+
+        ASIN	   Missing QTY	CP
+${asin}	              ${finalMissingQty2}	${finalCp2.toFixed(2)}
+
+
+For ASIN: ${asin}
+Billed: ${billed}, Received: ${received}
+Matched: ${rebni.matched_invoice_numbers}
+
+${loopDetailsText}
+
+Units missing from invoice: ${invoiceNumber}
+
+Kindly investigate the following invoices and ASINs for missing units:
+
+Invoice: ${invoiceNumber}
+ASIN: ${asin}
+
+Please check and help locate the missing units against the above invoices.
+
+Regards.`;
+
+            return {
+              status: 'Loop Discrepancy Found',
+              logs,
+              billed,
+              received,
+              missingQty: finalMissingQty2,
+              cp: finalCp2,
               blurb,
               loopResult
             };
@@ -966,12 +1063,16 @@ Matched: ${rebni.matched_invoice_numbers}
 
 ${loopDetailsText}
 
+Units missing from invoice: ${invoiceNumber}
+
 Kindly investigate the following invoices and ASINs for missing units:
 
-Invoice: ${loopResult.finalInvoice}
-ASIN: ${loopResult.finalAsin}
+Invoice: ${invoiceNumber}
+ASIN: ${asin}
 
-Please check and help locate the missing units against the above invoices.`;
+Please check and help locate the missing units against the above invoices.
+
+Regards.`;
 
           return {
             status: 'Loop Discrepancy Found',
@@ -980,6 +1081,52 @@ Please check and help locate the missing units against the above invoices.`;
             received: matchedQty,
             missingQty: finalMissingQty,
             cp: finalCp,
+            blurb,
+            loopResult
+          };
+        } else if (loopResult.type === 'NO_DISCREPANCY_IN_LOOP') {
+          const loopDetailsText = loopResult.loopDetails.map(detail => {
+            return `Upon Checking Invoice: ${detail.checkingInvoice}\n` +
+              `${detail.matchedQty} units matched to PO: ${detail.po} and ASIN: ${detail.asin}\n` +
+              `Billed: ${detail.billed}, Received: ${detail.received}\n` +
+              (detail.matchedInvoicesList ? `Matched: ${detail.matchedInvoicesList}\n` : '') + `__`;
+          }).join('\n\n');
+
+          const missingQtyFinal = Math.max(0, billed - received);
+          const cpFinal = parseFloat(rebni.item_cost) || 0;
+
+          const blurb = `Hello Team,
+
+-- Kindly find the below mentioned ASIN's missing from PO# : ${po}
+
+        ASIN	   Missing QTY	CP
+${asin}	              ${missingQtyFinal}	${cpFinal.toFixed(2)}
+
+
+For ASIN: ${asin}
+Billed: ${billed}, Received: ${received}
+Matched: ${rebni.matched_invoice_numbers}
+
+${loopDetailsText}
+
+Units missing from invoice: ${invoiceNumber}
+
+Kindly investigate the following invoices and ASINs for missing units:
+
+Invoice: ${invoiceNumber}
+ASIN: ${asin}
+
+Please check and help locate the missing units against the above invoices.
+
+Regards.`;
+
+          return {
+            status: 'Loop Discrepancy Found',
+            logs,
+            billed,
+            received,
+            missingQty: missingQtyFinal,
+            cp: cpFinal,
             blurb,
             loopResult
           };
@@ -1034,7 +1181,7 @@ Regards.`
     const matchedInvoices = this.activeInvestigation.invoiceRecords.filter(r => {
       const dbInv = (r.invoice_number || '').trim().toLowerCase();
       const queryInv = invoiceNumber.trim().toLowerCase();
-      return (dbInv === queryInv || dbInv.startsWith(queryInv) || queryInv.startsWith(dbInv)) && (r.asin || '').trim() === asin;
+      return (dbInv === queryInv || dbInv.startsWith(queryInv)) && (r.asin || '').trim() === asin;
     });
 
     const matchedRebnis = this.activeInvestigation.rebniRecords.filter(r =>
@@ -1050,7 +1197,9 @@ Regards.`
    * Run multi-ASIN rules execution with manual override parameters
    */
   runInvestigationMulti(params) {
-    const invoiceNumbers = (params.invoiceNumber || '').split(',').map(s => s.trim()).filter(Boolean);
+    const rawInvoiceNumbers = (params.invoiceNumber || '').split(',').map(s => s.trim()).filter(Boolean);
+    // Normalize: strip trailing SCR suffix so TFT/293SCR and TFT/293 both resolve to the base invoice
+    const invoiceNumbers = rawInvoiceNumbers.map(inv => inv.replace(/(SCR)+$/i, ''));
     const asins = (params.asin || '').split(',').map(s => s.trim()).filter(Boolean);
     const missingQtyStrings = (params.missingQty || '').split(',').map(s => s.trim());
     const cpStrings = (params.cp || '').split(',').map(s => s.trim());
@@ -1085,7 +1234,7 @@ Regards.`
         const dbInv = (r.invoice_number || '').trim().toLowerCase();
         const invMatch = invoiceNumbers.some(qInv => {
           const queryInv = qInv.toLowerCase();
-          return dbInv === queryInv || dbInv.startsWith(queryInv) || queryInv.startsWith(dbInv);
+          return dbInv === queryInv || dbInv.startsWith(queryInv);
         });
         return invMatch && (r.asin || '').trim() === currentAsin;
       });
@@ -1113,11 +1262,8 @@ Regards.`
         return asinMatch && whMatch && poMatch;
       });
 
-      // Use the actual invoice number from the matched records (not always invoiceNumbers[0])
-      // This handles the case where multiple invoices exist on the same PO
-      const effectiveInvoiceNumber = matchedInvoices.length > 0
-        ? (matchedInvoices[0].invoice_number || '').trim() || invoiceNumbers[0]
-        : invoiceNumbers[0];
+      // Always use the user-provided invoice number
+      const effectiveInvoiceNumber = invoiceNumbers[0];
 
 
       const result = this.runRulesInternal(
@@ -1225,7 +1371,7 @@ Regards.`
       const cleanInvoicesList = (listStr) => {
         if (!listStr) return '';
         return listStr.split(/[\s,;]+/)
-          .map(inv => inv.trim().replace(/[a-zA-Z]+$/, ''))
+          .map(inv => inv.trim())
           .filter(Boolean)
           .join(', ');
       };
@@ -1388,15 +1534,35 @@ Regards.`
       rebniIndex.get(key).push(r);
     });
 
-    // Group unique invoice_number + asin
+    // Group unique invoice_number + asin (merge suffixed variants like SCR, A, B with base)
     const groups = new Map();
     invoiceRecords.forEach(r => {
       if (!r.invoice_number || !r.asin) return;
-      const key = `${r.invoice_number.trim()}|${r.asin.trim()}`;
-      if (!groups.has(key)) {
-        groups.set(key, []);
+      const invNum = r.invoice_number.trim();
+      const asin = r.asin.trim();
+      
+      // Check if this invoice is a suffix variant of an existing group
+      let foundKey = null;
+      for (const existingKey of groups.keys()) {
+        const [existingInv] = existingKey.split('|');
+        if (invNum.toLowerCase().startsWith(existingInv.toLowerCase()) || 
+            existingInv.toLowerCase().startsWith(invNum.toLowerCase())) {
+          if (existingKey.endsWith(`|${asin}`)) {
+            foundKey = existingKey;
+            break;
+          }
+        }
       }
-      groups.get(key).push(r);
+      
+      if (foundKey) {
+        groups.get(foundKey).push(r);
+      } else {
+        const key = `${invNum}|${asin}`;
+        if (!groups.has(key)) {
+          groups.set(key, []);
+        }
+        groups.get(key).push(r);
+      }
     });
 
     const summary = [];
@@ -1433,6 +1599,86 @@ Regards.`
    */
   getActiveInvestigation() {
     return this.activeInvestigation;
+  }
+
+  /**
+   * Prepare batch groups and REBNI index for chunked processing.
+   * Returns { groups, rebniIndex, totalGroups }
+   */
+  prepareBatchGroups() {
+    const invoiceRecords = this.activeInvestigation.invoiceRecords;
+    const rebniRecords = this.activeInvestigation.rebniRecords;
+
+    if (!invoiceRecords || invoiceRecords.length === 0) return { groups: [], rebniIndex: new Map(), totalGroups: 0 };
+
+    const rebniIndex = new Map();
+    rebniRecords.forEach(r => {
+      if (!r.asin || !r.po) return;
+      const key = `${r.asin.trim()}|${r.po.trim()}`;
+      if (!rebniIndex.has(key)) {
+        rebniIndex.set(key, []);
+      }
+      rebniIndex.get(key).push(r);
+    });
+
+    const groupsMap = new Map();
+    invoiceRecords.forEach(r => {
+      if (!r.invoice_number || !r.asin) return;
+      const invNum = r.invoice_number.trim();
+      const asin = r.asin.trim();
+
+      let foundKey = null;
+      for (const existingKey of groupsMap.keys()) {
+        const [existingInv] = existingKey.split('|');
+        if (invNum.toLowerCase().startsWith(existingInv.toLowerCase()) ||
+            existingInv.toLowerCase().startsWith(invNum.toLowerCase())) {
+          if (existingKey.endsWith(`|${asin}`)) {
+            foundKey = existingKey;
+            break;
+          }
+        }
+      }
+
+      if (foundKey) {
+        groupsMap.get(foundKey).push(r);
+      } else {
+        const key = `${invNum}|${asin}`;
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, []);
+        }
+        groupsMap.get(key).push(r);
+      }
+    });
+
+    const groups = Array.from(groupsMap.entries());
+    return { groups, rebniIndex, totalGroups: groups.length };
+  }
+
+  /**
+   * Process a single batch group and return its summary row
+   */
+  processBatchGroup(key, records, rebniIndex) {
+    const [invoiceNumber, asin] = key.split('|');
+    const firstRec = records[0];
+    const po = (firstRec.purchase_order_id || '').trim();
+
+    const mapKey = `${asin}|${po}`;
+    const matchingRebnis = rebniIndex.get(mapKey) || [];
+    const warehouseId = matchingRebnis.length > 0 ? (matchingRebnis[0].warehouse_id || '').trim() : '';
+
+    const result = this.runRulesInternal(invoiceNumber, asin, warehouseId, po, records, matchingRebnis);
+
+    return {
+      invoiceNumber,
+      asin,
+      po,
+      warehouseId,
+      status: result.status,
+      billed: result.billed !== undefined ? result.billed : Math.max(...records.map(r => parseInt(r.quantity_invoiced) || 0)),
+      received: result.received !== undefined ? result.received : 0,
+      missingQty: result.missingQty !== undefined ? result.missingQty : 0,
+      cp: result.cp || 0
+    };
   }
 }
 
