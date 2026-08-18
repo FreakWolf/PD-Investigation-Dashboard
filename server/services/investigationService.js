@@ -309,16 +309,18 @@ Regards.`;
         }
       }
 
-      const availableRebniRecords = effectiveWarehouse ? this.activeInvestigation.rebniRecords.filter(r => {
+      const availableRebniRecords = this.activeInvestigation.rebniRecords.filter(r => {
         const availQty = parseInt(r.rebni_available, 10) || 0;
         if (availQty <= 0) return false;
 
         const asinMatch = (r.asin || '').trim().toUpperCase() === asin.toUpperCase();
         if (!asinMatch) return false;
 
-        // Always filter by warehouse (mandatory — REBNI from any PO is fine as long as same warehouse)
-        const whMatch = (r.warehouse_id || '').trim().toUpperCase() === effectiveWarehouse;
-        if (!whMatch) return false;
+        // Filter by warehouse if available, otherwise search all warehouses
+        if (effectiveWarehouse) {
+          const whMatch = (r.warehouse_id || '').trim().toUpperCase() === effectiveWarehouse;
+          if (!whMatch) return false;
+        }
 
         if (startDateStart && endDateStart && r.received_datetime) {
           const rDate = new Date(r.received_datetime);
@@ -328,7 +330,7 @@ Regards.`;
           }
         }
         return true;
-      }) : [];
+      });
 
       if (availableRebniRecords.length > 0) {
         const totalRebniAvail = availableRebniRecords.reduce((sum, r) => sum + (parseInt(r.rebni_available, 10) || 0), 0);
